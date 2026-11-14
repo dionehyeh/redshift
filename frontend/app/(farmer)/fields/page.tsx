@@ -13,7 +13,7 @@ import {
   Waves,
 } from "lucide-react";
 import { serverApi } from "@/lib/server-api";
-import type { FieldItem } from "@/lib/types";
+import type { FieldListItem, FieldListResponse } from "@/lib/field-types";
 import { formatHectares } from "@/lib/format";
 import { ErrorBanner } from "@/components/common/ErrorBanner";
 
@@ -93,11 +93,11 @@ const CARD_THEMES = [
 ];
 
 export default async function FieldsPage() {
-  let fields: FieldItem[] = [];
+  let fields: FieldListItem[] = [];
   let fetchError: { code: string; message: string } | null = null;
 
   try {
-    const data = await serverApi<{ items: FieldItem[] }>("/fields");
+    const data = await serverApi<FieldListResponse | { items: FieldListItem[] }>("/fields");
     fields = data.items || [];
   } catch (err) {
     fetchError = {

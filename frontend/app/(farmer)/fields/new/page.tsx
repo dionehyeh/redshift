@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, MapPin, Droplets, Mountain, Sprout, Plus } from "lucide-react";
 import { api } from "@/lib/api";
+import type { FieldCreateResponse } from "@/lib/field-types";
 
 export default function NewFieldPage() {
   const router = useRouter();
@@ -23,22 +24,23 @@ export default function NewFieldPage() {
     setError("");
 
     try {
-      const data = await api<{ field_id?: number; id?: number }>("/fields", {
+      const data = await api<FieldCreateResponse>("/fields", {
         method: "POST",
         body: JSON.stringify({
           name,
           lat: Number(lat),
           lon: Number(lon),
-          area_ha: Number(areaHa),
+          area_ha: areaHa ? Number(areaHa) : null,
           water_source: waterSource,
           water_quality: waterQuality,
         }),
       });
 
-      const targetId = data.field_id || data.id || 1;
-      router.push(`/fields/${targetId}`);
+      const targetId = data.field_id || 1;
+      const jobQuery = data.job_id ? `?job_id=${encodeURIComponent(data.job_id)}` : "";
+      router.push(`/fields/${targetId}${jobQuery}`);
     } catch (err: any) {
-      setError(err.message || "Failed to create field plot");
+      setError(err instanceof Error ? err.message : "Failed to create field plot");
     } finally {
       setLoading(false);
     }
@@ -123,10 +125,11 @@ export default function NewFieldPage() {
 
         <div className="space-y-1.5">
           <label className="text-sm font-bold text-stone-800 flex items-center gap-1.5">
-            <Mountain className="w-4 h-4 text-amber-700" /> Plot Area (Hectares)
+            <Mountain className="w-4 h-4 text-amber-700" /> Plot Area (Hectares, optional)
           </label>
           <input
             type="number"
+            min="0.01"
             step="0.1"
             value={areaHa}
             onChange={(e) => setAreaHa(e.target.value)}

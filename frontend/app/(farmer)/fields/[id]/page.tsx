@@ -1,28 +1,66 @@
 import Link from "next/link";
-import { ArrowLeft, Compass, Calendar, AlertCircle, Plus, MapPin, Droplets, Mountain, Sprout, ShieldCheck, CheckCircle2 } from "lucide-react";
+import {
+  ArrowLeft,
+  Calendar,
+  Compass,
+  Pencil,
+  Plus,
+  MapPin,
+  Sprout,
+  Droplets,
+  Mountain,
+} from "lucide-react";
 import { serverApi } from "@/lib/server-api";
+import { ApiError } from "@/lib/api";
 import { formatHectares } from "@/lib/format";
+import type {
+  FeasibleCropsResponse,
+  FieldHistoryResponse,
+  FieldMapData,
+  FieldProfile,
+  FieldTimeline,
+} from "@/lib/field-types";
+import { FieldProfileEditor } from "@/components/fields/FieldProfileEditor";
+import { FieldTimeline as FieldTimelineView } from "@/components/fields/FieldTimeline";
+import { JobProgress } from "@/components/fields/JobProgress";
+import FieldMap from "@/components/fields/FieldMap";
 
-export default async function FieldDetailPage({ params }: { params: { id: string } }) {
+function location(lat: number, lon: number) {
+  return `${Math.abs(lat).toFixed(4)}°${lat < 0 ? "S" : "N"}, ${Math.abs(lon).toFixed(4)}°${lon < 0 ? "W" : "E"}`;
+}
+
+export default async function FieldDetailPage({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams?: { job_id?: string };
+}) {
   const fieldId = Number(params.id);
-  let field: any = null;
-  let feasible: any[] = [];
-  let history: any[] = [];
-
-  try {
-    field = await serverApi(`/fields/${fieldId}`);
-    const feasibleRes: any = await serverApi(`/fields/${fieldId}/feasible-crops`).catch(() => ({ crops: [] }));
-    feasible = feasibleRes.crops || [];
-    const historyRes: any = await serverApi(`/fields/${fieldId}/history`).catch(() => ({ seasons: [] }));
-    history = historyRes.seasons || [];
-  } catch (err) {
-    // handled gracefully
-  }
-
-  if (!field) {
+  if (!Number.isSafeInteger(fieldId) || fieldId <= 0) {
     return (
       <div className="p-12 text-center space-y-4 bg-white rounded-3xl border-2 border-stone-200 max-w-md mx-auto">
-        <h2 className="text-xl font-bold text-stone-800">Field record not found</h2>
+        <h2 className="text-xl font-bold text-stone-800">Invalid field identifier</h2>
+        <Link
+          href="/fields"
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-green-800 text-white font-bold text-sm shadow-md"
+        >
+          <ArrowLeft className="w-4 h-4" /> Return to My Fields
+        </Link>
+      </div>
+    );
+  }
+
+  let field: FieldProfile;
+  try {
+    field = await serverApi<FieldProfile>(`/fields/${fieldId}`);
+  } catch (error) {
+    return (
+      <div className="space-y-4 rounded-3xl border-2 border-red-200 bg-red-50 p-8 text-center max-w-md mx-auto">
+        <h2 className="text-xl font-bold text-red-900">Unable to load this field</h2>
+        <p role="alert" className="text-sm text-red-800">
+          {error instanceof Error ? error.message : "The field profile could not be retrieved."}
+        </p>
         <Link
           href="/fields"
           className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-green-800 text-white font-bold text-sm"
@@ -33,7 +71,40 @@ export default async function FieldDetailPage({ params }: { params: { id: string
     );
   }
 
-  const p = field.profile || {};
+  const [feasibleResult, historyResult, mapResult, timelineResult] = await Promise.allSettled([
+    serverApi<FeasibleCropsResponse | { crops: any[] }>(`/fields/${fieldId}/feasible-crops`),
+    serverApi<FieldHistoryResponse | { seasons: any[] }>(`/fields/${fieldId}/history`),
+    serverApi<FieldMapData>(`/fields/${fieldId}/map`),
+    serverApi<FieldTimeline>(`/fields/${fieldId}/timeline`),
+  ]);
+
+  const feasible =
+    feasibleResult.status === "fulfilled"
+      ? "suitable" in feasibleResult.value
+        ? [...feasibleResult.value.suitable, ...feasibleResult.value.marginal, ...feasibleResult.value.not_suitable]
+        : (feasibleResult.value as any).crops || []
+      : [];
+
+  const history =
+    historyResult.status === "fulfilled"
+      ? (historyResult.value as any).seasons || []
+      : [];
+
+  const mapData = mapResult.status === "fulfilled" ? mapResult.value : null;
+  const timeline = timelineResult.status === "fulfilled" ? timelineResult.value : null;
+
+  const errors = [
+    ...([feasibleResult, historyResult, mapResult, timelineResult].flatMap((result, index) => {
+      if (result.status === "fulfilled") return [];
+      const error = result.reason;
+      if (index === 0 && error instanceof ApiError && error.code === "FIELD_NOT_READY") return [];
+      const labels = ["Crop suitability", "Season history", "Field map", "Climate timeline"];
+      return [`${labels[index]}: ${error instanceof Error ? error.message : "Request failed"}`];
+    })),
+  ];
+
+  const profile = field.profile || {};
+  const jobId = searchParams?.job_id;
 
   return (
     <div className="space-y-8">
@@ -46,6 +117,8 @@ export default async function FieldDetailPage({ params }: { params: { id: string
           <ArrowLeft className="w-4 h-4 text-green-700" /> Back to My Fields
         </Link>
       </div>
+
+      {jobId && field.profile_status !== "ready" && <JobProgress jobId={jobId} />}
 
       {/* Hero Header */}
       <div className="bg-gradient-to-r from-green-900 via-green-800 to-emerald-900 rounded-3xl p-8 text-white shadow-xl space-y-6">
@@ -60,8 +133,7 @@ export default async function FieldDetailPage({ params }: { params: { id: string
             <div className="flex flex-wrap items-center gap-3 text-emerald-200 text-sm font-mono">
               <span className="flex items-center gap-1">
                 <MapPin className="w-4 h-4 text-emerald-300" />
-                {Math.abs(field.lat).toFixed(4)}° {field.lat >= 0 ? "N" : "S"},{" "}
-                {Math.abs(field.lon).toFixed(4)}° {field.lon >= 0 ? "E" : "W"}
+                {location(field.lat, field.lon)}
               </span>
               <span>•</span>
               <span>{field.area_ha ? formatHectares(field.area_ha) : "1.2 ha"}</span>
@@ -71,6 +143,12 @@ export default async function FieldDetailPage({ params }: { params: { id: string
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            <a
+              href="#edit-profile"
+              className="px-4 py-3 rounded-2xl bg-white/15 backdrop-blur hover:bg-white/25 text-white text-sm font-bold flex items-center gap-1.5 transition shadow-sm"
+            >
+              <Pencil className="w-4 h-4 text-emerald-300" /> Edit Profile
+            </a>
             <Link
               href={`/fields/${fieldId}/seasons/new`}
               className="px-5 py-3 rounded-2xl bg-white/15 backdrop-blur hover:bg-white/25 text-white text-sm font-bold flex items-center gap-2 transition shadow-sm"
@@ -87,31 +165,90 @@ export default async function FieldDetailPage({ params }: { params: { id: string
         </div>
       </div>
 
+      {field.profile_status !== "ready" && (
+        <div
+          className={`rounded-2xl border-2 p-5 text-sm font-medium ${
+            field.profile_status === "failed"
+              ? "border-red-200 bg-red-50 text-red-800"
+              : "border-amber-200 bg-amber-50 text-amber-900"
+          }`}
+        >
+          {field.profile_status === "failed"
+            ? "Field setup failed. The field record is saved, but profile and crop suitability data need attention."
+            : "Field data is still being prepared with NASA satellite observations. Profile values and crop suitability will populate automatically."}
+        </div>
+      )}
+
+      {errors.length > 0 && (
+        <div role="alert" className="space-y-1 rounded-2xl border-2 border-red-200 bg-red-50 p-5 text-sm text-red-800 font-medium">
+          {errors.map((error) => (
+            <p key={error}>{error}</p>
+          ))}
+        </div>
+      )}
+
       {/* Agronomic Profile Metrics */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="p-5 bg-white border-2 border-stone-200 rounded-2xl shadow-sm space-y-1">
           <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Elevation</span>
-          <div className="text-2xl font-black text-stone-900">{p.elevation_m?.value ?? "4.0"} m</div>
-          <span className="text-[11px] text-green-700 font-semibold block">{p.elevation_m?.source ?? "SRTM GL1 (30m)"}</span>
-        </div>
-        <div className="p-5 bg-white border-2 border-stone-200 rounded-2xl shadow-sm space-y-1">
-          <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Drainage & Hydrology</span>
-          <div className="text-2xl font-black text-stone-900 capitalize">{p.drainage?.value ?? "Poor"}</div>
-          <span className="text-[11px] text-amber-700 font-semibold block">
-            {p.flood_prone?.value ? "⚠️ Low-lying basin" : "Normal runoff"}
+          <div className="text-2xl font-black text-stone-900">
+            {profile.elevation_m?.value ?? "4.0"} {profile.elevation_m?.value != null ? "m" : ""}
+          </div>
+          <span className="text-[11px] text-green-700 font-semibold block">
+            {profile.elevation_m?.source || "SRTM GL1 (30m)"}
           </span>
         </div>
+
+        <div className="p-5 bg-white border-2 border-stone-200 rounded-2xl shadow-sm space-y-1">
+          <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Drainage & Hydrology</span>
+          <div className="text-2xl font-black text-stone-900 capitalize">
+            {String(profile.drainage?.value ?? "Poor")}
+          </div>
+          <span className="text-[11px] text-amber-700 font-semibold block">
+            {profile.flood_prone?.value === true
+              ? "⚠️ Low-lying flood basin"
+              : profile.flood_prone?.value === false
+              ? "Normal runoff"
+              : "Historical rain model"}
+          </span>
+        </div>
+
         <div className="p-5 bg-white border-2 border-stone-200 rounded-2xl shadow-sm space-y-1">
           <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Soil Reaction (pH)</span>
-          <div className="text-2xl font-black text-stone-900">{p.soil_ph?.value ?? "5.4"}</div>
-          <span className="text-[11px] text-green-700 font-semibold block">{p.soil_ph?.source ?? "Soil Health Card / KAU"}</span>
+          <div className="text-2xl font-black text-stone-900">{profile.soil_ph?.value ?? "5.4"}</div>
+          <span className="text-[11px] text-green-700 font-semibold block">
+            {profile.soil_ph?.source || "Soil Health Card / KAU"}
+          </span>
         </div>
+
         <div className="p-5 bg-white border-2 border-stone-200 rounded-2xl shadow-sm space-y-1">
           <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Water Quality</span>
           <div className="text-2xl font-black text-stone-900 capitalize">{field.water_quality ?? "Good"}</div>
           <span className="text-[11px] text-blue-700 font-semibold block">Source: {field.water_source ?? "Canal"}</span>
         </div>
       </div>
+
+      {/* Field Map Section */}
+      {mapData && (
+        <section className="rounded-3xl border-2 border-stone-200 bg-white p-6 shadow-sm space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-extrabold text-stone-900">Field Map</h2>
+              <p className="text-xs text-stone-500 font-mono">
+                {location(field.lat, field.lon)} · {field.area_ha ?? "1.2"} hectares
+              </p>
+            </div>
+            <div className="text-right text-xs text-stone-600">
+              <p>Elevation: {profile.elevation_m?.value ?? "4.0"} m</p>
+              <p>Flood status: {profile.flood_prone?.value ? "Prone" : "Not flagged"}</p>
+            </div>
+          </div>
+          <FieldMap data={mapData} lat={field.lat} lon={field.lon} />
+        </section>
+      )}
+
+      {/* Field Timeline Section */}
+      {timeline && <FieldTimelineView timeline={timeline} />}
 
       {/* Regional Feasible Crops */}
       <div className="p-8 bg-white border-2 border-stone-200 rounded-3xl shadow-sm space-y-6">
@@ -125,40 +262,52 @@ export default async function FieldDetailPage({ params }: { params: { id: string
           </span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {feasible.map((fc: any) => (
-            <div
-              key={fc.crop}
-              className="p-5 rounded-2xl border-2 border-stone-200 bg-stone-50/50 hover:border-green-300 transition flex flex-col justify-between space-y-3"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="font-extrabold text-stone-900 text-lg">
-                    {fc.name_ml ? `${fc.crop} (${fc.name_ml})` : fc.crop}
-                  </h3>
-                  <p className="text-xs text-stone-600 mt-1 leading-relaxed">{fc.reason}</p>
-                </div>
-                <span
-                  className={`text-xs px-3 py-1 rounded-full font-extrabold uppercase tracking-wider flex-shrink-0 ${
-                    fc.class === "suitable"
-                      ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
-                      : fc.class === "marginal"
-                      ? "bg-amber-100 text-amber-800 border border-amber-300"
-                      : "bg-red-100 text-red-800 border border-red-300"
-                  }`}
+        {feasible.length === 0 ? (
+          <p className="text-sm text-stone-500 italic">
+            {field.profile_status === "ready"
+              ? "No crop suitability results are available."
+              : "Suitability will appear after field setup finishes."}
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {feasible.map((fc: any) => {
+              const cropName = fc.crop_name || fc.crop || "Crop";
+              const malayalam = fc.name_ml ? ` (${fc.name_ml})` : "";
+              return (
+                <div
+                  key={fc.crop_id || fc.crop || cropName}
+                  className="p-5 rounded-2xl border-2 border-stone-200 bg-stone-50/50 hover:border-green-300 transition flex flex-col justify-between space-y-3"
                 >
-                  {fc.class.replace("_", " ")}
-                </span>
-              </div>
-              {fc.start_windows && fc.start_windows.length > 0 && (
-                <div className="text-[11px] text-stone-500 font-semibold flex items-center gap-1.5 pt-2 border-t border-stone-200">
-                  <span>Optimal planting window:</span>
-                  <span className="text-green-800 font-bold">{fc.start_windows.join(", ")}</span>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="font-extrabold text-stone-900 text-lg">
+                        {cropName.replace(/_/g, " ")}{malayalam}
+                      </h3>
+                      <p className="text-xs text-stone-600 mt-1 leading-relaxed">{fc.reason}</p>
+                    </div>
+                    <span
+                      className={`text-xs px-3 py-1 rounded-full font-extrabold uppercase tracking-wider flex-shrink-0 ${
+                        fc.class === "suitable"
+                          ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                          : fc.class === "marginal"
+                          ? "bg-amber-100 text-amber-800 border border-amber-300"
+                          : "bg-red-100 text-red-800 border border-red-300"
+                      }`}
+                    >
+                      {fc.class?.replace(/_/g, " ")}
+                    </span>
+                  </div>
+                  {fc.start_windows && fc.start_windows.length > 0 && (
+                    <div className="text-[11px] text-stone-500 font-semibold flex items-center gap-1.5 pt-2 border-t border-stone-200">
+                      <span>Optimal planting window:</span>
+                      <span className="text-green-800 font-bold">{fc.start_windows.join(", ")}</span>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          ))}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Recorded Cropping History */}
@@ -193,11 +342,11 @@ export default async function FieldDetailPage({ params }: { params: { id: string
                       {s.crop_name || "Paddy"}
                     </span>
                     <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-stone-200 text-stone-700">
-                      {s.status}
+                      {s.status || "completed"}
                     </span>
                   </div>
                   <p className="text-xs text-stone-500">
-                    {s.start_date} to {s.end_date || "Ongoing"} • Outcome:{" "}
+                    {s.start_date || "N/A"} to {s.end_date || "Ongoing"} • Outcome:{" "}
                     <span className="font-semibold text-stone-700 capitalize">{s.outcome || "N/A"}</span>
                   </p>
                   {s.approved_cause && (
@@ -218,6 +367,11 @@ export default async function FieldDetailPage({ params }: { params: { id: string
             ))}
           </div>
         )}
+      </div>
+
+      {/* Field Profile Editor Section */}
+      <div id="edit-profile">
+        <FieldProfileEditor field={field} />
       </div>
     </div>
   );
