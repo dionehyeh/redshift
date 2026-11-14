@@ -1,7 +1,9 @@
 from fastapi import APIRouter
-from app.jobs import get_job_status
+
 from app.config import settings
 from app.errors import AppError
+from app.jobs import get_job_status
+from app.schemas.system import HealthResponse
 
 router = APIRouter(tags=["System & Health"])
 
@@ -20,7 +22,7 @@ def get_job(id: str):
         "result": job.get("result"),
     }
 
-@router.get("/health")
+@router.get("/health", response_model=HealthResponse)
 def health_check():
     return {
         "status": "ok",

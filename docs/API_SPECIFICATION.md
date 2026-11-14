@@ -65,6 +65,13 @@ unauthenticated requests, invalid preference values, and profile provisioning fa
 | 11 | `GET` | `/fields/{id}/map` | Farmer | GeoJSON polygon/point with elevation & flood layers |
 | 12 | `GET` | `/fields/{id}/history` | Farmer | Historical seasons list with outcomes & verified causes |
 
+Field profiles include per-metric source, resolution, confidence, and a `gaps` list.
+Elevation and soil estimates come from SRTM and SoilGrids; unavailable values remain
+null instead of using regional demo constants. Timeline rainfall normals use NASA
+POWER, with coverage-qualified IMERG observations and MODIS NDVI when Earth Engine
+is configured. Crop suitability is withheld when elevation or required POWER
+climatology is unavailable.
+
 ### Historical Seasons & Likely-Causes Diagnosis
 | # | Method | Path | Auth | Description |
 |---|---|---|---|---|
@@ -75,6 +82,17 @@ unauthenticated requests, invalid preference values, and profile provisioning fa
 | 17 | `GET` | `/seasons/{id}/analysis` | Farmer | Get diagnosed findings, stress flags, gaps, and questions |
 | 18 | `POST` | `/findings/{id}/review` | Farmer/Mentor | Confirm, correct, or reject a diagnosed finding |
 
+Season and plan IDs are scoped to the owning farmer; inaccessible records return
+`NOT_FOUND`. A mentor or officer may review a finding only while an active report
+shared with that helper includes the `findings` consent category.
+
+Season analysis reports the actual climatology period, data gaps, and likely causes
+from the completed analysis job. If an analysis is not complete, the response does
+not invent findings or observations. Findings include a value unit when applicable;
+rainfall deviations are percentages and heat deviations are degrees Celsius.
+Unavailable source data is reported as a gap and completes the job as
+`done_with_gaps`.
+
 ### Crop Planning & Scenario Simulation
 | # | Method | Path | Auth | Description |
 |---|---|---|---|---|
@@ -82,6 +100,13 @@ unauthenticated requests, invalid preference values, and profile provisioning fa
 | 20 | `GET` | `/plans/{id}` | Farmer | Retrieve stored plan with full cards & explanations |
 | 21 | `POST` | `/plans/{id}/rescore` | Farmer | Instant re-scoring based on rainfall & temperature sliders |
 | 22 | `POST` | `/plans/{id}/choose` | Farmer | Select card; marks as planned season in field history |
+
+Plan creation uses the selected season's configured start week when no week is
+provided, and derives the following season from the configured season schedule.
+An explicit `next_week` may be supplied when a plan needs a different timing
+boundary. Rescoring reuses the saved water answer and crop-history snapshot and
+persists updated scores and stress-scenario robustness. Choosing a card plans
+the season for the next occurrence of its ISO start week.
 
 ### Mentor Consultation & Consent Sharing
 | # | Method | Path | Auth | Description |
@@ -92,6 +117,15 @@ unauthenticated requests, invalid preference values, and profile provisioning fa
 | 26 | `POST` | `/reports/{id}/revoke` | Farmer | Immediately revoke mentor access to report snapshot |
 | 27 | `GET` | `/mentor/inbox` | Mentor/Officer | List shared consultation reports pending review |
 | 28 | `GET` | `/helpers` | Farmer | List available student mentors, volunteers, and officers |
+
+Report access is limited to its creating farmer or designated helper while the
+report is unexpired and not revoked. Comments and inbox entries follow the same
+active-share requirement. A report snapshot contains only selected sections:
+field terrain/soil attributes (`field_profile`), completed-season crop/outcome
+history (`history`), plan strategy cards (`cards`), and scrubbed stress findings
+(`findings`). Unselected sections are neither queried for the snapshot nor
+included in the stored consent record. Findings omit internal field/season IDs,
+and history omits financial details.
 
 ### Reference Data & Explainers
 | # | Method | Path | Auth | Description |

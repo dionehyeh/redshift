@@ -33,7 +33,7 @@ backend/
 ├── migrations/                 # Incremental SQL migration scripts
 ├── scripts/
 │   ├── seed_demo.py            # Seeds the crop catalog (no demo passwords)
-│   ├── pull_cell.py            # Pre-pulls climatological cell from NASA
+│   ├── pull_cell.py            # Fetches NASA POWER data and builds cell climatology
 │   ├── check_env.py            # Environment validation script
 │   └── smoke.sh                # End-to-end API smoke test
 ├── tests/                      # Pytest unit & integration test suites
@@ -63,7 +63,27 @@ secret key must match the one in `frontend/.env.local`. New users are provisione
 PostgreSQL on their first authenticated API request. New users default to the `farmer`
 role; set trusted roles through Clerk `public_metadata` before the user's first login.
 
+Field onboarding obtains SRTM terrain and SoilGrids estimates from their source
+services. Set `EE_PROJECT` and configure Google application-default credentials to
+enable MODIS NDVI and GPM IMERG point-series extraction; without Earth Engine access,
+the backend retains NASA POWER rainfall and reports the missing NDVI data instead of
+generating synthetic observations.
+
+`DEMO_MODE` controls the health endpoint's demo-source status and defaults to `false`.
+Accepted values are `1`/`true`/`yes`/`on` and `0`/`false`/`no`/`off`.
+
+Pre-fetch a NASA POWER cell's historical data and normals before a demo or analysis:
+```bash
+python scripts/pull_cell.py --lat 9.5 --lon 76.4
+```
+Use `--refresh` to refetch the provider series and `--years 20` to set the history
+window. The script requires network access to NASA POWER.
+
 ### Running Tests
 ```bash
 pytest tests/
 ```
+
+The `Backend checks` GitHub Actions workflow runs the complete backend test suite
+and lints the configuration, health endpoint, and API-flow tests on backend pull
+requests and pushes to `main`.

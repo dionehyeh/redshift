@@ -17,6 +17,8 @@ This document details the deterministic two-stage rotation evaluation engine imp
    - Rain $+20\%$
    - Temperature $+2\text{ °C}$
    - Rain $-20\%$ with Temperature $+2\text{ °C}$
+   The lowest score and "Holds Up Best" result are stored with each plan card
+   and recalculated and persisted whenever the plan is rescored.
 
 ---
 

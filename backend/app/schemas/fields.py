@@ -197,6 +197,7 @@ class FieldProfileResponse(BaseModel):
     water_quality: str
     profile_status: str
     profile: dict[str, MetricMetadata] = Field(default_factory=dict)
+    gaps: list[str] = Field(default_factory=list)
     climate_cell_id: str | None = None
     created_at: str
 

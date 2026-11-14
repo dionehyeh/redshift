@@ -1,6 +1,10 @@
-from app.engine.scoring import load_crops, get_weights, pick_three, evaluate, verdict
+import math
+
+from app.analysis.core import stored_soil_water, water_outlook
+from app.engine.scoring import get_weights, pick_three, verdict
+from app.errors import AppError
 from app.services.climate_service import load_cell_normals
-from app.analysis.core import water_outlook, stored_soil_water
+
 
 def build_scoring_environment(
     field: dict,
@@ -11,21 +15,47 @@ def build_scoring_environment(
     toggle: str | None = None,
     scenario: dict | None = None,
 ) -> dict:
-    cell_id = field.get("climate_cell_id") or "09.5N_076.5E"
+    cell_id = field.get("climate_cell_id")
+    if not cell_id:
+        raise AppError(
+            "FIELD_PROFILE_INCOMPLETE",
+            "The field climate profile is not available",
+            status=409,
+        )
+    if field.get("elevation_m") is None:
+        raise AppError(
+            "FIELD_PROFILE_INCOMPLETE",
+            "Field elevation is unavailable; crop suitability cannot be calculated",
+            status=409,
+        )
     normals = load_cell_normals(cell_id)
+    if not all(
+        key in normals
+        and len(normals[key]) == 52
+        and all(
+            value is not None and math.isfinite(float(value))
+            for value in normals[key]
+        )
+        for key in ("rain", "tmean", "tmax")
+    ):
+        raise AppError(
+            "FIELD_PROFILE_INCOMPLETE",
+            "Required climate normals are unavailable for this field",
+            status=409,
+        )
     
-    stored_mm, stored_conf, stored_basis = stored_soil_water(answer=stored_water_answer)
+    stored_mm, _stored_conf, stored_basis = stored_soil_water(answer=stored_water_answer)
     outlook = water_outlook(normals["rain"], start_week, 12, imd_factor_range=(0.80, 0.95))
     weights = get_weights(dry_outlook=(outlook["factor"] < 0.9), toggle=toggle)
 
     return {
         "field": {
-            "elevation_m": field.get("elevation_m") or 4.0,
-            "flood_prone": bool(field.get("flood_prone")),
-            "drainage": field.get("drainage") or "poor",
-            "ph": field.get("soil_ph") or 5.4,
-            "water_source": field.get("water_source") or "rainfed",
-            "slope": field.get("slope") or "low",
+            "elevation_m": field["elevation_m"],
+            "flood_prone": field.get("flood_prone"),
+            "drainage": field.get("drainage"),
+            "ph": field.get("soil_ph"),
+            "water_source": field.get("water_source", "unknown"),
+            "slope": field.get("slope"),
             "water_quality": field.get("water_quality") or "unknown",
         },
         "history": history,

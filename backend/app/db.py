@@ -78,3 +78,8 @@ def init_db(schema_path: str | None = None) -> None:
         )
         if migration_path.exists():
             _execute_script(conn, migration_path.read_text(encoding="utf-8"))
+        migration_path = (
+            Path(__file__).resolve().parents[1] / "migrations/003_plan_card_robustness.sql"
+        )
+        if migration_path.exists():
+            _execute_script(conn, migration_path.read_text(encoding="utf-8"))

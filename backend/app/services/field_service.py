@@ -1,13 +1,23 @@
 import json
 import logging
+import math
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
+import requests
+
 from app.db import get_db
+from app.engine.scoring import hard_filter, load_crops
 from app.errors import AppError
-from app.jobs import update_job_step, complete_job, fail_job
-from app.engine.scoring import load_crops, hard_filter
-from app.services.climate_service import load_cell_normals
+from app.jobs import complete_job, fail_job, update_job_step
+from app.services.climate_service import grid_cell_id, load_cell_normals
+from app.services.soil_service import (
+    SoilDataUnavailable,
+    estimate_drainage,
+    fetch_soil_profile,
+)
+from app.services.terrain_service import TerrainDataUnavailable, fetch_terrain_profile
 
 logger = logging.getLogger(__name__)
 
@@ -260,66 +270,151 @@ def onboard_field_task(job_id: str, field_id: int) -> None:
             field = dict(conn.execute("SELECT * FROM fields WHERE id = ?", (field_id,)).fetchone())
 
         lat, lon = field["lat"], field["lon"]
-        cell_lat = round(lat * 2) / 2   # snap to 0.5° grid
-        cell_lon = round(lon * 2) / 2
-        # Format: "09.5N_076.5E"
-        lat_hem = "N" if cell_lat >= 0 else "S"
-        lon_hem = "E" if cell_lon >= 0 else "W"
-        cell_id = f"{abs(cell_lat):04.1f}{lat_hem}_{abs(cell_lon):05.1f}{lon_hem}"
+        cell_id = grid_cell_id(lat, lon)
+        gaps = []
 
-        # Kerala lowland terrain defaults (demo — SRTM not called)
-        elevation_m = 4.0
-        slope = "low"
-        is_flood_prone = True  # lowland Kerala default
-        drainage = "poor"
+        terrain = None
+        update_job_step(job_id, "terrain", 15)
+        try:
+            terrain = fetch_terrain_profile(lat, lon)
+        except TerrainDataUnavailable as exc:
+            logger.warning("SRTM profile unavailable for field %s", field_id, exc_info=exc)
+            gaps.append("SRTM terrain profile is unavailable")
 
-        # Step 2: soil (40%) — SoilGrids demo defaults
         update_job_step(job_id, "soil", 40)
-        soil_ph = 5.4
-        soil_oc = 1.2
-        soil_texture = "clay_loam"
-        soil_source = "SoilGrids (demo default)"
-        soil_confidence = "low"
+        soil = None
+        try:
+            soil = fetch_soil_profile(lat, lon)
+        except SoilDataUnavailable as exc:
+            logger.warning("SoilGrids profile unavailable for field %s", field_id, exc_info=exc)
+            gaps.append("SoilGrids soil profile is unavailable")
+        else:
+            if any(
+                soil.get(key) is None
+                for key in ("soil_ph", "soil_oc", "soil_texture")
+            ):
+                gaps.append("SoilGrids soil properties are incomplete")
 
-        # Build profile_meta JSON for per-metric source/confidence tracking
+        elevation_m = terrain["elevation_m"] if terrain else None
+        slope = terrain["slope"] if terrain else None
+        slope_pct = terrain["slope_pct"] if terrain else None
+        is_flood_prone = terrain["flood_prone"] if terrain else None
+        relative_elevation = terrain["relative_elevation_m"] if terrain else None
+        soil_ph = soil["soil_ph"] if soil else None
+        soil_oc = soil["soil_oc"] if soil else None
+        soil_texture = soil["soil_texture"] if soil else None
+        soil_source = soil["source"] if soil else None
+        soil_confidence = soil["confidence"] if soil else None
+        clay_pct = soil["clay_pct"] if soil else None
+        sand_pct = soil["sand_pct"] if soil else None
+        drainage = estimate_drainage(clay_pct, sand_pct, slope_pct)
+        if drainage is None:
+            gaps.append("Soil texture and terrain do not support a drainage estimate")
+
+        update_job_step(job_id, "climate_normals", 70)
+        normals = {}
+        try:
+            normals = load_cell_normals(cell_id)
+        except (RuntimeError, requests.RequestException) as exc:
+            logger.warning("NASA POWER normals unavailable for field %s", field_id, exc_info=exc)
+            gaps.append("NASA POWER climatology is unavailable")
+
+        required_normals = ("rain_mm", "tmean", "tmax")
+        climate_ready = all(
+            key in normals
+            and len(normals[key]) == 52
+            and all(
+                value is not None and math.isfinite(float(value))
+                for value in normals[key]
+            )
+            for key in required_normals
+        )
+        if not climate_ready and "NASA POWER climatology is unavailable" not in gaps:
+            gaps.append("NASA POWER climatology is incomplete")
+
         profile_meta = {
-            "elevation_m": {"value": elevation_m, "source": "SRTM GL1 (demo default)", "resolution": "30 m", "confidence": "low"},
-            "slope": {"value": slope, "source": "SRTM terrain model (demo)", "resolution": "30 m", "confidence": "low"},
-            "flood_prone": {"value": is_flood_prone, "source": "SRTM + Historical Rain pattern (Kerala lowland)", "resolution": "regional", "confidence": "medium"},
-            "drainage": {"value": drainage, "source": "KAU soil classification (Kerala lowland default)", "resolution": "regional", "confidence": "medium"},
-            "soil_ph": {"value": soil_ph, "source": soil_source, "resolution": "250 m", "confidence": soil_confidence},
-            "soil_oc": {"value": soil_oc, "source": soil_source, "resolution": "250 m", "confidence": soil_confidence},
-            "soil_texture": {"value": soil_texture, "source": soil_source, "resolution": "250 m", "confidence": soil_confidence},
+            "elevation_m": {
+                "value": elevation_m,
+                "source": terrain["source"] if terrain else "SRTM GL1",
+                "resolution": "30 m",
+                "confidence": terrain["confidence"] if terrain else "low",
+            },
+            "slope": {
+                "value": slope,
+                "source": "SRTM GL1 terrain model",
+                "resolution": "30 m",
+                "confidence": terrain["confidence"] if terrain else "low",
+                "estimate": {"slope_pct": slope_pct},
+            },
+            "flood_prone": {
+                "value": is_flood_prone,
+                "source": "SRTM GL1 local-relief indicator",
+                "resolution": "30 m",
+                "confidence": "low",
+                "estimate": {"relative_elevation_m": relative_elevation},
+            },
+            "drainage": {
+                "value": drainage,
+                "source": "SoilGrids texture + SRTM slope estimate",
+                "resolution": "250 m + 30 m",
+                "confidence": "low",
+                "estimate": {"clay_pct": clay_pct, "slope_pct": slope_pct},
+            },
+            "soil_ph": {
+                "value": soil_ph,
+                "source": soil_source or "ISRIC SoilGrids v2.0",
+                "resolution": "250 m",
+                "confidence": soil_confidence or "low",
+            },
+            "soil_oc": {
+                "value": soil_oc,
+                "source": soil_source or "ISRIC SoilGrids v2.0",
+                "resolution": "250 m",
+                "confidence": soil_confidence or "low",
+            },
+            "soil_texture": {
+                "value": soil_texture,
+                "source": soil_source or "ISRIC SoilGrids v2.0",
+                "resolution": "250 m",
+                "confidence": soil_confidence or "low",
+                "estimate": {
+                    "clay_pct": clay_pct,
+                    "sand_pct": sand_pct,
+                    "silt_pct": soil["silt_pct"] if soil else None,
+                },
+            },
             "water_source": {"value": field.get("water_source", "unknown"), "source": "Farmer profile", "resolution": "field-level", "confidence": "high"},
             "water_quality": {"value": field.get("water_quality", "unknown"), "source": "Farmer profile", "resolution": "field-level", "confidence": "high"},
+            "climate": {
+                "source": "NASA POWER",
+                "resolution": "~50 km",
+                "normal_years": 20,
+            },
+            "gaps": gaps,
+            "generated_at": datetime.now(UTC).isoformat(),
         }
 
-        # Step 3: climate_normals (70%) — load or build demo normals
-        update_job_step(job_id, "climate_normals", 70)
-        normals = load_cell_normals(cell_id)
-        tmean = normals.get("tmean", [27.5] * 52)
-
-        # Step 4: feasibility scoring (90%)
+        # A missing elevation or climatology is not replaced with a regional constant.
+        profile_ready = elevation_m is not None and climate_ready
         update_job_step(job_id, "feasibility", 90)
-        crops = load_crops()
-
-        # Build field dict for scoring engine (needs ph key too)
-        field_eval = {
-            "elevation_m": elevation_m,
-            "flood_prone": is_flood_prone,
-            "drainage": drainage,
-            "soil_ph": soil_ph,
-            "ph": soil_ph,  # scoring engine uses both keys
-            "water_source": field.get("water_source", "rainfed"),
-            "water_quality": field.get("water_quality", "unknown"),
-            "slope": slope,
-        }
+        if profile_ready:
+            crops = load_crops()
+            field_eval = {
+                "elevation_m": elevation_m,
+                "flood_prone": is_flood_prone,
+                "drainage": drainage,
+                "soil_ph": soil_ph,
+                "ph": soil_ph,
+                "water_source": field.get("water_source", "unknown"),
+                "water_quality": field.get("water_quality", "unknown"),
+                "slope": slope,
+            }
+            tmean_window = normals["tmean"][:12]
 
         with get_db() as conn:
-            # Update field with computed data
             conn.execute(
                 """UPDATE fields SET
-                   profile_status = 'ready',
+                   profile_status = ?,
                    climate_cell_id = ?,
                    elevation_m = ?,
                    slope = ?,
@@ -332,34 +427,56 @@ def onboard_field_task(job_id: str, field_id: int) -> None:
                    soil_confidence = ?,
                    profile_meta = ?
                    WHERE id = ?""",
-                (cell_id, elevation_m, slope, int(is_flood_prone), drainage,
-                 soil_ph, soil_oc, soil_texture, soil_source, soil_confidence,
-                 json.dumps(profile_meta), field_id),
+                (
+                    "ready" if profile_ready else "failed",
+                    cell_id,
+                    elevation_m,
+                    slope,
+                    int(is_flood_prone) if is_flood_prone is not None else None,
+                    drainage,
+                    soil_ph,
+                    soil_oc,
+                    soil_texture,
+                    soil_source,
+                    soil_confidence,
+                    json.dumps(profile_meta),
+                    field_id,
+                ),
             )
 
-            # Compute and store crop feasibility for all crops
-            # Use week 2 as start, week 24 as next season (Kharif → Rabi example)
-            start_week = 2
-            next_week = 24
-            tmean_window = tmean[:12]  # first 12 weeks for hard filter temperature check
+            if profile_ready:
+                for crop in crops:
+                    cls, reasons = hard_filter(
+                        crop,
+                        field_eval,
+                        2,
+                        24,
+                        tmean_window,
+                    )
+                    reason_str = "; ".join(reasons) if reasons else (
+                        "All conditions met" if cls == "suitable" else "Marginal conditions"
+                    )
+                    windows_str = ";".join(
+                        f"{window[0]}-{window[1]}" for window in crop["start_windows"]
+                    )
+                    conn.execute(
+                        """INSERT INTO field_crops (field_id, crop_id, "class", reason, start_windows, computed_at)
+                           VALUES (?, (SELECT id FROM crops WHERE name = ?), ?, ?, ?, CURRENT_TIMESTAMP)
+                           ON CONFLICT (field_id, crop_id) DO UPDATE SET
+                               "class" = EXCLUDED."class",
+                               reason = EXCLUDED.reason,
+                               start_windows = EXCLUDED.start_windows,
+                               computed_at = CURRENT_TIMESTAMP""",
+                        (field_id, crop["name"], cls, reason_str, windows_str),
+                    )
 
-            for crop in crops:
-                cls, reasons = hard_filter(crop, field_eval, start_week, next_week, tmean_window)
-                reason_str = "; ".join(reasons) if reasons else ("All conditions met" if cls == "suitable" else "Marginal conditions")
-                windows_str = ";".join(f"{w[0]}-{w[1]}" for w in crop["start_windows"])
-
-                conn.execute(
-                    """INSERT INTO field_crops (field_id, crop_id, "class", reason, start_windows, computed_at)
-                       VALUES (?, (SELECT id FROM crops WHERE name = ?), ?, ?, ?, CURRENT_TIMESTAMP)
-                       ON CONFLICT (field_id, crop_id) DO UPDATE SET
-                           "class" = EXCLUDED."class",
-                           reason = EXCLUDED.reason,
-                           start_windows = EXCLUDED.start_windows,
-                           computed_at = CURRENT_TIMESTAMP""",
-                    (field_id, crop["name"], cls, reason_str, windows_str),
-                )
-
-        complete_job(job_id, "done", {"field_id": field_id, "status": "ready", "cell_id": cell_id})
+        status = "ready" if profile_ready else "failed"
+        job_status = "done_with_gaps" if gaps else "done"
+        complete_job(
+            job_id,
+            job_status,
+            {"field_id": field_id, "status": status, "cell_id": cell_id, "gaps": gaps},
+        )
 
     except Exception as exc:
         logger.exception("Field onboarding failed for field %s", field_id)
