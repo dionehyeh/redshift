@@ -79,7 +79,11 @@ $$\text{Severity} = \text{Base Anomaly Deviation} \times \text{Duration (weeks)}
 
 ### 5.1 5–8 Month Water Outlook
 $$R_{\text{expected}} = \sum_{w=start}^{start+n} \text{NormalRain}_w \times F_{\text{outlook}}$$
-Where $F_{\text{outlook}}$ is derived from IMD seasonal monsoon forecasts (e.g., $0.80$ to $0.95$ for below-normal rainfall).
+Where $F_{\text{outlook}}$ is derived from the latest date-valid IMD seasonal
+monsoon bulletin configured for the region. If no current bulletin is available,
+the score uses a neutral climatological factor range of $0.85$ to $1.15$, marks
+confidence low, and includes an explicit source gap; it does not reuse an expired
+forecast.
 
 ### 5.2 Stored Soil Moisture at Planting
 Dry-season crops (e.g. green gram or sesame sown after monsoon paddy) rely heavily on residual soil water:

@@ -531,6 +531,77 @@ def test_valid_scoring_environment_preserves_unknown_soil_values(monkeypatch):
     assert env["field"]["drainage"] is None
 
 
+def test_scoring_uses_transparent_climatology_when_no_current_outlook(monkeypatch):
+    monkeypatch.setattr(
+        scoring_service,
+        "load_cell_normals",
+        lambda _cell: {
+            "rain": [10.0] * 52,
+            "tmean": [25.0] * 52,
+            "tmax": [30.0] * 52,
+        },
+    )
+
+    def no_current_outlook():
+        raise AppError(
+            "OUTLOOK_UNAVAILABLE",
+            "No current seasonal outlook",
+            status=503,
+        )
+
+    monkeypatch.setattr(
+        scoring_service, "get_seasonal_outlook", no_current_outlook
+    )
+    env = scoring_service.build_scoring_environment(
+        {
+            "climate_cell_id": "09.5N_076.5E",
+            "elevation_m": 18.5,
+        },
+        [],
+        2,
+        24,
+    )
+
+    assert env["outlook_info"]["forecast_available"] is False
+    assert env["outlook_info"]["factor_range"] == [0.85, 1.15]
+    assert env["outlook_info"]["confidence"] == "low"
+    assert env["outlook_info"]["source_gap"]
+    assert env["outlook_factor"] == 1.0
+
+
+def test_scoring_uses_the_current_bulletin_factor_range(monkeypatch):
+    monkeypatch.setattr(
+        scoring_service,
+        "load_cell_normals",
+        lambda _cell: {
+            "rain": [10.0] * 52,
+            "tmean": [25.0] * 52,
+            "tmax": [30.0] * 52,
+        },
+    )
+    monkeypatch.setattr(
+        scoring_service,
+        "get_seasonal_outlook",
+        lambda: {
+            "factor_range": [0.8, 0.9],
+            "source": "IMD bulletin",
+            "valid_for": "2026 monsoon",
+            "entered_on": "2026-05-01",
+        },
+    )
+
+    env = scoring_service.build_scoring_environment(
+        {"climate_cell_id": "09.5N_076.5E", "elevation_m": 18.5},
+        [],
+        2,
+        24,
+    )
+
+    assert env["outlook_factor"] == 0.85
+    assert env["outlook_info"]["forecast_available"] is True
+    assert env["outlook_info"]["source"] == "IMD bulletin"
+
+
 def test_unknown_slope_does_not_receive_erosion_cover_score_bonus():
     crop = {
         "ph_min": 5.5,

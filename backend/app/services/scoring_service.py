@@ -4,6 +4,7 @@ from app.analysis.core import stored_soil_water, water_outlook
 from app.engine.scoring import get_weights, pick_three, verdict
 from app.errors import AppError
 from app.services.climate_service import load_cell_normals
+from app.services.reference_service import get_seasonal_outlook
 
 
 def build_scoring_environment(
@@ -45,7 +46,44 @@ def build_scoring_environment(
         )
     
     stored_mm, _stored_conf, stored_basis = stored_soil_water(answer=stored_water_answer)
-    outlook = water_outlook(normals["rain"], start_week, 12, imd_factor_range=(0.80, 0.95))
+    try:
+        seasonal_reference = get_seasonal_outlook()
+    except AppError as exc:
+        if exc.code not in {"OUTLOOK_UNAVAILABLE", "REFERENCE_DATA_UNAVAILABLE"}:
+            raise
+        outlook = water_outlook(normals["rain"], start_week, 12)
+        outlook.update(
+            {
+                "forecast_available": False,
+                "factor_range": [0.85, 1.15],
+                "factor_source": "climatological baseline",
+                "source": "No current regional seasonal outlook bulletin",
+                "source_gap": (
+                    "Scores use a low-confidence climatological baseline until "
+                    "a current outlook bulletin is available."
+                ),
+                "valid_for": None,
+                "entered_on": None,
+            }
+        )
+    else:
+        factor_range = seasonal_reference["factor_range"]
+        outlook = water_outlook(
+            normals["rain"],
+            start_week,
+            12,
+            imd_factor_range=(factor_range[0], factor_range[1]),
+        )
+        outlook.update(
+            {
+                "forecast_available": True,
+                "factor_range": factor_range,
+                "factor_source": "IMD seasonal outlook",
+                "source": seasonal_reference["source"],
+                "valid_for": seasonal_reference["valid_for"],
+                "entered_on": seasonal_reference["entered_on"],
+            }
+        )
     weights = get_weights(dry_outlook=(outlook["factor"] < 0.9), toggle=toggle)
 
     return {

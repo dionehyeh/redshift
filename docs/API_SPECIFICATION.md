@@ -138,6 +138,16 @@ and history omits financial details.
 | 34 | `GET` | `/reference/seasons` | Public | Kerala planting seasons calendar (Virippu, Mundakan, Puncha)|
 | 35 | `GET` | `/sources` | Public | Dataset metadata, spatial resolution, and limitations |
 
+Explainer requests support `en` and `ml`. Core explainers are localized in
+Malayalam; other cards fall back to English and report `lang: "en"` so clients
+can identify the language actually returned. The seasonal outlook comes from a
+region-specific, date-bounded IMD bulletin in `backend/data/outlooks.json`.
+Expired or missing forecasts return `503 OUTLOOK_UNAVAILABLE` rather than a
+stale forecast or synthetic normal estimate. Each `forecasts` entry contains a
+region, label, factor range, source bulletin, `valid_from`, `valid_through`,
+`valid_for`, and `entered_on`; when entries overlap, the latest current bulletin
+is used.
+
 ### System & Async Jobs
 | # | Method | Path | Auth | Description |
 |---|---|---|---|---|
