@@ -136,9 +136,9 @@ export default async function FieldDetailPage({
                 {location(field.lat, field.lon)}
               </span>
               <span>•</span>
-              <span>{field.area_ha ? formatHectares(field.area_ha) : "1.2 ha"}</span>
+              <span>{field.area_ha ? formatHectares(field.area_ha) : "Area not recorded"}</span>
               <span>•</span>
-              <span className="capitalize">{field.water_source} Irrigation</span>
+              <span className="capitalize">{field.water_source} water</span>
             </div>
           </div>
 
@@ -174,8 +174,17 @@ export default async function FieldDetailPage({
           }`}
         >
           {field.profile_status === "failed"
-            ? "Field setup failed. The field record is saved, but profile and crop suitability data need attention."
-            : "Field data is still being prepared with NASA satellite observations. Profile values and crop suitability will populate automatically."}
+            ? "Field setup could not retrieve the elevation or required climate data. Unavailable measurements are not replaced with regional defaults."
+            : "Field data is being prepared from remote-sensing and soil sources. Missing provider data will be shown rather than estimated with regional defaults."}
+        </div>
+      )}
+
+      {field.gaps.length > 0 && (
+        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-5 text-sm text-amber-950">
+          <p className="font-bold">Some field data is unavailable:</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            {field.gaps.map((gap) => <li key={gap}>{gap}</li>)}
+          </ul>
         </div>
       )}
 
@@ -192,39 +201,39 @@ export default async function FieldDetailPage({
         <div className="p-5 bg-white border-2 border-stone-200 rounded-2xl shadow-sm space-y-1">
           <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Elevation</span>
           <div className="text-2xl font-black text-stone-900">
-            {profile.elevation_m?.value ?? "4.0"} {profile.elevation_m?.value != null ? "m" : ""}
+            {profile.elevation_m?.value ?? "Unavailable"} {profile.elevation_m?.value != null ? "m" : ""}
           </div>
           <span className="text-[11px] text-green-700 font-semibold block">
-            {profile.elevation_m?.source || "SRTM GL1 (30m)"}
+            {profile.elevation_m?.source || "Source unavailable"}
           </span>
         </div>
 
         <div className="p-5 bg-white border-2 border-stone-200 rounded-2xl shadow-sm space-y-1">
           <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Drainage & Hydrology</span>
           <div className="text-2xl font-black text-stone-900 capitalize">
-            {String(profile.drainage?.value ?? "Poor")}
+            {String(profile.drainage?.value ?? "Unavailable")}
           </div>
           <span className="text-[11px] text-amber-700 font-semibold block">
             {profile.flood_prone?.value === true
-              ? "⚠️ Low-lying flood basin"
+              ? "Potential local low point (low confidence)"
               : profile.flood_prone?.value === false
-              ? "Normal runoff"
-              : "Historical rain model"}
+              ? "No local low-point signal"
+              : "Flood status unavailable; not a flood map"}
           </span>
         </div>
 
         <div className="p-5 bg-white border-2 border-stone-200 rounded-2xl shadow-sm space-y-1">
           <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Soil Reaction (pH)</span>
-          <div className="text-2xl font-black text-stone-900">{profile.soil_ph?.value ?? "5.4"}</div>
+          <div className="text-2xl font-black text-stone-900">{profile.soil_ph?.value ?? "Unavailable"}</div>
           <span className="text-[11px] text-green-700 font-semibold block">
-            {profile.soil_ph?.source || "Soil Health Card / KAU"}
+            {profile.soil_ph?.source || "Source unavailable"}
           </span>
         </div>
 
         <div className="p-5 bg-white border-2 border-stone-200 rounded-2xl shadow-sm space-y-1">
           <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Water Quality</span>
-          <div className="text-2xl font-black text-stone-900 capitalize">{field.water_quality ?? "Good"}</div>
-          <span className="text-[11px] text-blue-700 font-semibold block">Source: {field.water_source ?? "Canal"}</span>
+          <div className="text-2xl font-black text-stone-900 capitalize">{field.water_quality ?? "Unknown"}</div>
+          <span className="text-[11px] text-blue-700 font-semibold block">Source: {field.water_source ?? "Unknown"}</span>
         </div>
       </div>
 
@@ -235,12 +244,12 @@ export default async function FieldDetailPage({
             <div>
               <h2 className="text-xl font-extrabold text-stone-900">Field Map</h2>
               <p className="text-xs text-stone-500 font-mono">
-                {location(field.lat, field.lon)} · {field.area_ha ?? "1.2"} hectares
+                {location(field.lat, field.lon)} · {field.area_ha ? formatHectares(field.area_ha) : "Area not recorded"}
               </p>
             </div>
             <div className="text-right text-xs text-stone-600">
-              <p>Elevation: {profile.elevation_m?.value ?? "4.0"} m</p>
-              <p>Flood status: {profile.flood_prone?.value ? "Prone" : "Not flagged"}</p>
+              <p>Elevation: {profile.elevation_m?.value ?? "Unavailable"}{profile.elevation_m?.value != null ? " m" : ""}</p>
+              <p>Flood status: {profile.flood_prone?.value === true ? "Potential low point" : profile.flood_prone?.value === false ? "No low-point signal" : "Unavailable"}</p>
             </div>
           </div>
           <FieldMap data={mapData} lat={field.lat} lon={field.lon} />
@@ -255,7 +264,7 @@ export default async function FieldDetailPage({
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-2xl font-extrabold text-stone-900">Regional Feasible Crops</h2>
-            <p className="text-sm text-stone-500">Cross-matched against local soil pH, elevation, and 20-year NASA IMERG normals.</p>
+            <p className="text-sm text-stone-500">Cross-matched against available soil, terrain, and 20-year NASA POWER climate data.</p>
           </div>
           <span className="text-xs px-3 py-1 bg-green-100 text-green-800 rounded-full font-bold">
             Kerala Agro-Ecological Zones

@@ -65,6 +65,13 @@ unauthenticated requests, invalid preference values, and profile provisioning fa
 | 11 | `GET` | `/fields/{id}/map` | Farmer | GeoJSON polygon/point with elevation & flood layers |
 | 12 | `GET` | `/fields/{id}/history` | Farmer | Historical seasons list with outcomes & verified causes |
 
+Field profiles include per-metric source, resolution, confidence, and a `gaps` list.
+Elevation and soil estimates come from SRTM and SoilGrids; unavailable values remain
+null instead of using regional demo constants. Timeline rainfall normals use NASA
+POWER, with coverage-qualified IMERG observations and MODIS NDVI when Earth Engine
+is configured. Crop suitability is withheld when elevation or required POWER
+climatology is unavailable.
+
 ### Historical Seasons & Likely-Causes Diagnosis
 | # | Method | Path | Auth | Description |
 |---|---|---|---|---|

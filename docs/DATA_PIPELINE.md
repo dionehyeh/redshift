@@ -7,12 +7,12 @@ This specification defines the harmonization, cleaning, normal computation, anom
 ## 1. Pipeline Stages
 
 ```
-[1. Locate]       Pin coordinate (lat, lon) -> Snap to 0.5° POWER & 0.1° IMERG grid cells
-[2. Pull]         Extract 20-year daily weather & 16-day MODIS NDVI composites
+[1. Locate]       Pin coordinate (lat, lon) -> 0.5° POWER cell; retain point for 250 m data
+[2. Pull]         Fetch POWER normals, point MODIS composites, and seasonal IMERG weeks
 [3. Clean]        Missing values (-999/-9999) -> NaN; Clip rain to >= 0; Scale NDVI (x0.0001)
 [4. Weekly]       Aggregate ISO calendar weeks (week 53 folded into week 52)
 [5. Normals]      Compute 52-week mean, std dev, and count (minimum 10 years per week)
-[6. Terrain]      SRTM 33x33 grid -> Compute slope %, relative elevation, and flood flag
+[6. Terrain]      SRTM 7x7 neighborhood -> Compute slope %, local relief, and a low-confidence flood indicator
 [7. Diagnosis]    Calculate z-scores -> Detect continuous stress runs -> Synthesize findings
 [8. Outlook]      Combine weekly normals + current moisture + IMD seasonal outlook range
 ```
@@ -100,9 +100,22 @@ the documented 10-year minimum is surfaced as a data gap.
 Repeated analysis updates matching pending findings while preserving findings that
 have already been reviewed.
 
-The current climate loader fetches NASA POWER rainfall and temperature. NDVI is
-analyzed only when it is already present in the weekly cache; this repository does
-not yet ingest MODIS or IMERG data. Missing sources and observations are returned as
-gaps rather than being replaced with demo values. Jobs finish as `done_with_gaps`
-when a data gap is reported. The diagnostic remains deterministic and does not infer
-pests, disease, or nutrient deficiencies from satellite data.
+NASA POWER supplies the 20-year weather baseline and cached 0.5-degree daily/weekly
+series. With a configured Earth Engine project and application credentials, the
+climate loader also samples MODIS MOD13Q1 at the field point and GPM IMERG weekly
+rainfall for the selected year or season. IMERG observations are compared with POWER
+climatology; weeks without adequate IMERG coverage retain POWER observations. MODIS
+composites are quality-filtered and expanded only over their documented 16-day
+composite windows. NDVI is cached at an approximately 250 m point key rather than
+being shared across a 0.5-degree weather cell.
+
+Field onboarding reads SRTM elevation from the 30 m `srtm30m` service and soil
+properties from the ISRIC SoilGrids v2.0 point API. Slope is computed from a local
+elevation neighborhood. The flood flag is only a low-confidence local-relief
+indicator; it is not an observed flood map. Drainage is an estimate based on
+SoilGrids texture and SRTM slope. When a provider has no data, the profile records a
+gap and leaves that metric unavailable rather than substituting a regional constant.
+Jobs finish as `done_with_gaps` when non-critical providers are unavailable; missing
+elevation or climatology prevents crop suitability from being marked ready. The
+diagnostic remains deterministic and does not infer pests, disease, or nutrient
+deficiencies from satellite data.
