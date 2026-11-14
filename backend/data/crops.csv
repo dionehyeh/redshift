@@ -1,0 +1,9 @@
+name,name_ml,family,duration_days,need_mm,water_need,drought_tol,waterlog_tol,n_effect,ph_min,ph_max,t_min,t_max,t_flower_max,flower_frac_start,flower_frac_end,start_windows,long_duration,watch_for,elev_min,elev_max,repeat_penalty,om_bonus,erosion_cover,market,salinity_tol,good_next,source,source_date
+paddy,,Poaceae,135,1200,high,L,H,heavy,5.0,6.5,20,38,35,0.55,0.75,16-24;36-42;48-4,0,stem borer; blast; water level control,-10,1500,15,0,0,msp,L,Fabaceae,PLACEHOLDER verify with KAU,2026-11-14
+green_gram,,Fabaceae,70,400,low,H,L,fixer,6.0,7.5,20,38,38,0.40,0.60,48-8;36-42,0,yellow mosaic virus; waterlogging,-10,1500,40,1,0,msp,L,Poaceae,PLACEHOLDER verify with KAU,2026-11-14
+cowpea,,Fabaceae,85,450,low,H,L,fixer,5.5,7.0,20,38,38,0.40,0.60,48-8;16-24;36-42,0,aphids; pod borer,-10,1500,40,1,0,medium,M,Poaceae,PLACEHOLDER verify with KAU,2026-11-14
+sesame,,Pedaliaceae,85,450,low,H,L,neutral,5.5,8.0,20,38,36,0.40,0.60,48-8,0,waterlogging; leaf webber,-10,1500,30,0,0,medium,M,Poaceae,PLACEHOLDER verify with KAU,2026-11-14
+groundnut,,Fabaceae,110,550,medium,M,L,fixer,6.0,7.0,20,35,35,0.30,0.55,48-6,0,leaf spot; needs light soil,-5,1500,40,1,0,msp,L,Poaceae,PLACEHOLDER verify with KAU,2026-11-14
+okra,,Malvaceae,100,600,medium,M,L,neutral,6.0,7.0,20,36,36,0.35,0.90,48-8;16-24,0,yellow vein mosaic; fruit borer,-5,1500,30,0,0,medium,M,Poaceae,PLACEHOLDER verify with KAU,2026-11-14
+tapioca,,Euphorbiaceae,300,1000,medium,H,L,heavy,5.5,7.0,20,35,35,0.50,0.80,16-26,1,mealybug; cassava mosaic; waterlogging,-5,1500,30,0,0,medium,L,Fabaceae,PLACEHOLDER verify with KAU,2026-11-14
+banana,,Musaceae,330,1800,high,L,L,heavy,5.5,7.5,15,38,38,0.60,0.80,16-26;36-44,1,wind damage; panama wilt; waterlogging,-5,1000,25,0,0,medium,M,Fabaceae,PLACEHOLDER verify with KAU,2026-11-14
