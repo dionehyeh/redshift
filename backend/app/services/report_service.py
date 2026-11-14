@@ -50,12 +50,20 @@ def create_report_service(farmer_id: int, plan_id: int, mentor_id: int, share_fi
         if not helper:
             raise AppError("NOT_FOUND", "Consultation helper not found", status=404)
         
-        field_row = conn.execute("SELECT * FROM fields WHERE id = ?", (plan_row["field_id"],)).fetchone()
-        cards_rows = conn.execute("SELECT * FROM plan_cards WHERE plan_id = ?", (plan_id,)).fetchall()
-        
         # Build scrubbed snapshot strictly respecting farmer consent
         snapshot = {}
         if "field_profile" in share_fields:
+            field_row = conn.execute(
+                """SELECT elevation_m, flood_prone, drainage, soil_ph
+                   FROM fields WHERE id = ?""",
+                (plan_row["field_id"],),
+            ).fetchone()
+            if not field_row:
+                raise AppError(
+                    "NOT_FOUND",
+                    "Field profile not found",
+                    status=404,
+                )
             snapshot["field"] = {
                 "elevation_m": field_row["elevation_m"],
                 "flood_prone": bool(field_row["flood_prone"]),
@@ -63,6 +71,11 @@ def create_report_service(farmer_id: int, plan_id: int, mentor_id: int, share_fi
                 "soil_ph": field_row["soil_ph"],
             }
         if "cards" in share_fields:
+            cards_rows = conn.execute(
+                """SELECT position, crop_id, verdict, total, factors_json
+                   FROM plan_cards WHERE plan_id = ? ORDER BY position ASC""",
+                (plan_id,),
+            ).fetchall()
             snapshot["cards"] = [
                 {
                     "position": c["position"],
@@ -72,6 +85,55 @@ def create_report_service(farmer_id: int, plan_id: int, mentor_id: int, share_fi
                     "factors": json.loads(c["factors_json"]),
                 }
                 for c in cards_rows
+            ]
+        if "history" in share_fields:
+            history_rows = conn.execute(
+                """SELECT c.name AS crop, s.start_date, s.end_date,
+                          s.outcome, s.loss_percent
+                   FROM seasons s
+                   LEFT JOIN crops c ON c.id = s.crop_id
+                   WHERE s.field_id = ? AND s.status = 'completed'
+                   ORDER BY s.end_date DESC, s.id DESC""",
+                (plan_row["field_id"],),
+            ).fetchall()
+            snapshot["history"] = [
+                {
+                    "crop": row["crop"],
+                    "start_date": row["start_date"],
+                    "end_date": row["end_date"],
+                    "outcome": row["outcome"],
+                    "loss_percent": row["loss_percent"],
+                }
+                for row in history_rows
+            ]
+        if "findings" in share_fields:
+            finding_rows = conn.execute(
+                """SELECT fi.kind, fi.week_from, fi.week_to, fi.deviation,
+                          fi.unit, fi.crop_stage, fi.severity, fi.confidence,
+                          fi.source, fi.resolution, fi.text_plain,
+                          fi.explainer_key, fi.review_status
+                   FROM findings fi
+                   JOIN seasons s ON s.id = fi.season_id
+                   WHERE s.field_id = ?
+                   ORDER BY s.start_date DESC, fi.week_from, fi.id""",
+                (plan_row["field_id"],),
+            ).fetchall()
+            snapshot["findings"] = [
+                {
+                    "kind": row["kind"],
+                    "weeks": [row["week_from"], row["week_to"]],
+                    "deviation": row["deviation"],
+                    "unit": row["unit"],
+                    "crop_stage": row["crop_stage"],
+                    "severity": row["severity"],
+                    "confidence": row["confidence"],
+                    "source": row["source"],
+                    "resolution": row["resolution"],
+                    "text": row["text_plain"],
+                    "explainer_key": row["explainer_key"],
+                    "review_status": row["review_status"],
+                }
+                for row in finding_rows
             ]
 
         token = new_share_token()
