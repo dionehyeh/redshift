@@ -4,10 +4,11 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import type { UserProfile } from "@/lib/types";
+import { Loader2 } from "lucide-react";
 
 export default function AuthRedirectPage() {
   const router = useRouter();
-  const [error, setError] = useState("");
+  const [statusText, setStatusText] = useState("Loading your account...");
 
   useEffect(() => {
     let active = true;
@@ -22,13 +23,11 @@ export default function AuthRedirectPage() {
               : "/fields"
           );
         }
-      } catch (requestError) {
+      } catch {
+        // If backend /me is not reachable, gracefully fallback to the primary /fields view
         if (active) {
-          setError(
-            requestError instanceof Error
-              ? requestError.message
-              : "Unable to load your account profile"
-          );
+          setStatusText("Redirecting to plots dashboard...");
+          router.replace("/fields");
         }
       }
     }
@@ -41,12 +40,9 @@ export default function AuthRedirectPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-100 p-4">
-      <div className="rounded-xl bg-white p-6 text-center shadow-sm">
-        {error ? (
-          <p className="text-sm text-red-700">{error}</p>
-        ) : (
-          <p className="text-sm text-slate-600">Loading your account...</p>
-        )}
+      <div className="rounded-2xl bg-white p-8 text-center shadow-sm max-w-sm w-full space-y-3">
+        <Loader2 className="w-6 h-6 animate-spin text-emerald-700 mx-auto" />
+        <p className="text-sm font-medium text-slate-700">{statusText}</p>
       </div>
     </main>
   );

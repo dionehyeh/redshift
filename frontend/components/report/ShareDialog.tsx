@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ShieldCheck, X, Send } from "lucide-react";
+import { api } from "@/lib/api";
 
 export function ShareDialog({
   planId,
@@ -34,9 +35,8 @@ export function ShareDialog({
     setError("");
 
     try {
-      const res = await fetch("/api/reports", {
+      const data = await api<{ report_id: number }>("/reports", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           plan_id: planId,
           mentor_id: mentorId,
@@ -45,12 +45,7 @@ export function ShareDialog({
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data?.error?.message || "Failed to create consultation report");
-      }
-
-      onSuccess?.(data.id);
+      onSuccess?.(data.report_id);
       onClose();
     } catch (err: any) {
       setError(err.message || "Failed to share report");
