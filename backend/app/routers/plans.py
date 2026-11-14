@@ -11,7 +11,11 @@ from app.schemas.plans import (
     RescoreRequest,
     RescoreResponse,
 )
-from app.services.plan_service import create_plan_service, rescore_plan_service
+from app.services.plan_service import (
+    create_plan_service,
+    rescore_plan_service,
+    upcoming_week_start,
+)
 
 router = APIRouter(tags=["Crop Plans & Simulation"])
 
@@ -29,32 +33,52 @@ def get_plan(id: int, user: dict = Depends(require_role("farmer")), plan: dict =
     with get_db() as conn:
         plan_row = plan
         
-        cards_rows = conn.execute("SELECT * FROM plan_cards WHERE plan_id = ? ORDER BY position ASC", (id,)).fetchall()
+        cards_rows = conn.execute(
+            """SELECT pc.*, c.name AS crop_name
+               FROM plan_cards pc
+               LEFT JOIN crops c ON pc.crop_id = c.id
+               WHERE pc.plan_id = ? ORDER BY pc.position ASC""",
+            (id,),
+        ).fetchall()
         cards = []
         for c in cards_rows:
+            if not c["crop_name"]:
+                raise AppError(
+                    "PLAN_CARD_CROP_UNAVAILABLE",
+                    "A crop in this plan is no longer available",
+                    status=409,
+                    details={"plan_id": id, "card_id": c["position"]},
+                )
+            evidence = json.loads(c["evidence_json"]) if c["evidence_json"] else {}
             cards.append({
                 "id": c["position"],
                 "position": c["position"],
                 "is_existing_rotation": bool(c["is_existing_rotation"]),
-                "crop": c["crop_id"],
+                "crop": c["crop_name"],
                 "verdict": c["verdict"],
                 "total": c["total"],
                 "factors": json.loads(c["factors_json"]),
                 "colors": json.loads(c["flags_json"]),
                 "confidence": json.loads(c["confidence_json"]),
-                "robustness": {"worst_case_total": c["total"] - 8.0, "holds_up_best": (c["position"] == 2)},
+                "robustness": (
+                    json.loads(c["robustness_json"])
+                    if c["robustness_json"]
+                    else {"worst_case_total": None, "holds_up_best": False}
+                ),
                 "text": json.loads(c["text_json"]),
-                "notes": [],
-                "needs_local_review": ["seed variety", "market price"],
-                "explainer_keys": ["water_balance", "rotation"],
+                "notes": json.loads(c["notes_json"]) if c["notes_json"] else [],
+                "needs_local_review": evidence.get("needs_local_review", []),
+                "explainer_keys": evidence.get("explainer_keys", []),
             })
 
+        inputs = json.loads(plan_row["inputs_json"]) if plan_row["inputs_json"] else {}
         return {
             "plan_id": id,
             "outlook": json.loads(plan_row["outlook_json"]),
             "weights": json.loads(plan_row["weights_json"]),
-            "inputs": json.loads(plan_row["inputs_json"]) if plan_row["inputs_json"] else {},
+            "inputs": inputs,
             "cards": cards,
+            "farmer_choice_card": inputs.get("farmer_choice_card"),
             "chosen_card_id": plan_row["chosen_card_id"],
         }
 
@@ -80,10 +104,11 @@ def choose_card(
             raise AppError("NOT_FOUND", "Plan card not found", status=404)
         
         conn.execute("UPDATE plans SET chosen_card_id = ? WHERE id = ?", (body.card_id, id))
+        start_date = upcoming_week_start(plan["start_week"]).isoformat()
         cursor = conn.execute(
             """INSERT INTO seasons (field_id, crop_id, status, start_date)
-               VALUES (?, ?, 'planned', '2026-12-01') RETURNING id""",
-            (plan["field_id"], card["crop_id"]),
+               VALUES (?, ?, 'planned', ?) RETURNING id""",
+            (plan["field_id"], card["crop_id"], start_date),
         )
         season_id = cursor.fetchone()["id"]
         conn.execute(

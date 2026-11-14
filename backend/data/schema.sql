@@ -162,6 +162,7 @@ CREATE TABLE IF NOT EXISTS plan_cards (
   confidence_json TEXT NOT NULL,
   evidence_json TEXT,
   notes_json TEXT,
+  robustness_json TEXT,
   text_json TEXT,
   text_validated INTEGER DEFAULT 0
 );
