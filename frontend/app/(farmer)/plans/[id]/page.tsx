@@ -23,7 +23,9 @@ export default function PlanCardsPage({ params }: { params: { id: string } }) {
       .then((data) => {
         setPlan(data);
         setCards(data.cards || []);
-        setChosenCardId(data.chosen_card_id ?? 2);
+        setChosenCardId(data.chosen_card_id ?? null);
+        setRainSlider(data.inputs?.scenario?.rain ?? 1.0);
+        setTempSlider(data.inputs?.scenario?.temp ?? 0.0);
         setLoading(false);
       })
       .catch((err) => {
@@ -207,7 +209,7 @@ export default function PlanCardsPage({ params }: { params: { id: string } }) {
                   <span className="text-[11px] font-bold text-stone-500 uppercase tracking-wider">
                     {c.card_type === "customary" || index === 0 ? "Card 1: Customary" : `Card ${index + 1}: Alternative`}
                   </span>
-                  {(c.robustness?.holds_up_best || index === 1) && (
+                  {c.robustness?.holds_up_best && (
                     <span className="text-[11px] font-extrabold px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
                       🛡️ Holds Up Best
                     </span>

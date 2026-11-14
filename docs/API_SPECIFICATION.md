@@ -101,6 +101,13 @@ Unavailable source data is reported as a gap and completes the job as
 | 21 | `POST` | `/plans/{id}/rescore` | Farmer | Instant re-scoring based on rainfall & temperature sliders |
 | 22 | `POST` | `/plans/{id}/choose` | Farmer | Select card; marks as planned season in field history |
 
+Plan creation uses the selected season's configured start week when no week is
+provided, and derives the following season from the configured season schedule.
+An explicit `next_week` may be supplied when a plan needs a different timing
+boundary. Rescoring reuses the saved water answer and crop-history snapshot and
+persists updated scores and stress-scenario robustness. Choosing a card plans
+the season for the next occurrence of its ISO start week.
+
 ### Mentor Consultation & Consent Sharing
 | # | Method | Path | Auth | Description |
 |---|---|---|---|---|
