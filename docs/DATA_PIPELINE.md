@@ -89,3 +89,20 @@ $$\text{Available Water} = \text{Effective Rainfall} + \text{Stored Soil Water}$
   1. Direct answer: `"wet"` ($100\% = 150\text{ mm}$), `"moist"` ($50\% = 75\text{ mm}$), `"dry"` ($0\% = 0\text{ mm}$).
   2. Satellite soil moisture (SMAP/GLDAS) scaled between wilting point ($0.10$) and field capacity ($0.35$).
   3. Default fallback: $30\%$ capacity ($45\text{ mm}$) labeled with **Low Confidence**.
+
+## 6. Runtime Diagnosis Behavior
+
+Season analysis uses the field's cached weekly series and the season's recorded dates.
+The analysis selects the matching ISO weeks, computes week-of-year normals from the
+available history, and reports rainfall deficits and flowering-stage heat runs only
+when the observations and corresponding weekly normals are available. Coverage below
+the documented 10-year minimum is surfaced as a data gap.
+Repeated analysis updates matching pending findings while preserving findings that
+have already been reviewed.
+
+The current climate loader fetches NASA POWER rainfall and temperature. NDVI is
+analyzed only when it is already present in the weekly cache; this repository does
+not yet ingest MODIS or IMERG data. Missing sources and observations are returned as
+gaps rather than being replaced with demo values. Jobs finish as `done_with_gaps`
+when a data gap is reported. The diagnostic remains deterministic and does not infer
+pests, disease, or nutrient deficiencies from satellite data.
