@@ -4,8 +4,13 @@ from uuid import uuid4
 from fastapi import APIRouter, BackgroundTasks, Depends
 
 from app.db import get_db
-from app.deps import current_user, own_field, require_role
-from app.errors import AppError
+from app.deps import (
+    current_user,
+    own_field,
+    own_season,
+    require_role,
+    reviewable_finding,
+)
 from app.jobs import create_job
 from app.schemas.seasons import (
     FindingReviewRequest,
@@ -39,15 +44,15 @@ def log_season(field_id: int, body: SeasonCreateRequest, user: dict = Depends(re
         return {"id": season_id, "field_id": field_id, "status": "completed", "crop": body.crop}
 
 @router.get("/seasons/{id}")
-def get_season(id: int, user: dict = Depends(current_user)):
-    with get_db() as conn:
-        row = conn.execute("SELECT * FROM seasons WHERE id = ?", (id,)).fetchone()
-        if not row:
-            raise AppError("NOT_FOUND", "Season record not found", status=404)
-        return dict(row)
+def get_season(id: int, season: dict = Depends(own_season)):
+    return season
 
 @router.patch("/seasons/{id}")
-def patch_season(id: int, body: SeasonPatchRequest, user: dict = Depends(require_role("farmer"))):
+def patch_season(
+    id: int,
+    body: SeasonPatchRequest,
+    season: dict = Depends(own_season),
+):
     with get_db() as conn:
         conn.execute(
             """UPDATE seasons 
@@ -60,18 +65,19 @@ def patch_season(id: int, body: SeasonPatchRequest, user: dict = Depends(require
     return {"status": "updated"}
 
 @router.post("/seasons/{id}/analyze", status_code=202)
-def analyze_season(id: int, tasks: BackgroundTasks, user: dict = Depends(require_role("farmer"))):
+def analyze_season(
+    id: int,
+    tasks: BackgroundTasks,
+    season: dict = Depends(own_season),
+):
     job_id = f"job_analysis_{id}_{uuid4().hex[:12]}"
     create_job(job_id, "season_analysis", target_id=id, steps=["loading_season", "calculating_anomalies", "synthesizing_stress_flags"])
     tasks.add_task(analyze_season_task, job_id, id)
     return {"season_id": id, "job_id": job_id, "status": "queued"}
 
 @router.get("/seasons/{id}/analysis", response_model=SeasonAnalysisResponse)
-def get_season_analysis(id: int, user: dict = Depends(current_user)):
+def get_season_analysis(id: int, season: dict = Depends(own_season)):
     with get_db() as conn:
-        season = conn.execute("SELECT * FROM seasons WHERE id = ?", (id,)).fetchone()
-        if not season:
-            raise AppError("NOT_FOUND", "Season not found", status=404)
         findings_rows = conn.execute("SELECT * FROM findings WHERE season_id = ?", (id,)).fetchall()
         analysis_job = conn.execute(
             """SELECT result_json FROM jobs
@@ -115,12 +121,13 @@ def get_season_analysis(id: int, user: dict = Depends(current_user)):
         }
 
 @router.post("/findings/{id}/review")
-def review_finding(id: int, body: FindingReviewRequest, user: dict = Depends(current_user)):
+def review_finding(
+    id: int,
+    body: FindingReviewRequest,
+    user: dict = Depends(current_user),
+    finding: dict = Depends(reviewable_finding),
+):
     with get_db() as conn:
-        finding = conn.execute("SELECT * FROM findings WHERE id = ?", (id,)).fetchone()
-        if not finding:
-            raise AppError("NOT_FOUND", "Finding not found", status=404)
-        
         verified_level = 1 if user["role"] == "mentor" else (2 if user["role"] == "officer" else 0)
         review_status = "confirmed" if body.action == "confirm" else ("rejected" if body.action == "reject" else "corrected")
 

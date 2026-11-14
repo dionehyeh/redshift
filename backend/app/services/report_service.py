@@ -1,18 +1,54 @@
 import json
-import time
-from datetime import datetime, timedelta
+import logging
+from datetime import datetime, timedelta, timezone
+
 from app.db import get_db
-from app.security import new_share_token
 from app.errors import AppError
+from app.security import new_share_token
+
+logger = logging.getLogger(__name__)
+
+
+def report_is_active(report: dict) -> bool:
+    if report.get("revoked_at") or report.get("status") == "revoked":
+        return False
+    try:
+        expiry = datetime.fromisoformat(str(report["expires_at"]))
+    except (KeyError, TypeError, ValueError) as exc:
+        logger.exception("Invalid report expiration stored in the database")
+        raise AppError(
+            "REPORT_INVALID",
+            "Stored report expiration is invalid",
+            status=500,
+        ) from exc
+    now = datetime.now(timezone.utc)
+    if expiry.tzinfo is None:
+        now = now.replace(tzinfo=None)
+    else:
+        now = now.astimezone(expiry.tzinfo)
+    return expiry > now
+
 
 def create_report_service(farmer_id: int, plan_id: int, mentor_id: int, share_fields: list[str], expires_days: int) -> dict:
-    if not share_fields:
+    allowed_fields = {"field_profile", "history", "cards", "findings"}
+    if not share_fields or not set(share_fields).issubset(allowed_fields):
         raise AppError("CONSENT_REQUIRED", "Select at least one field to share", status=400)
     
     with get_db() as conn:
-        plan_row = conn.execute("SELECT * FROM plans WHERE id = ?", (plan_id,)).fetchone()
+        plan_row = conn.execute(
+            """SELECT p.* FROM plans p
+               JOIN fields f ON f.id = p.field_id
+               WHERE p.id = ? AND f.farmer_id = ?""",
+            (plan_id, farmer_id),
+        ).fetchone()
         if not plan_row:
             raise AppError("NOT_FOUND", "Plan not found", status=404)
+        helper = conn.execute(
+            "SELECT id FROM users WHERE id = ? AND role IN ('mentor', 'officer')",
+            (mentor_id,),
+        ).fetchone()
+        if not helper:
+            raise AppError("NOT_FOUND", "Consultation helper not found", status=404)
         
         field_row = conn.execute("SELECT * FROM fields WHERE id = ?", (plan_row["field_id"],)).fetchone()
         cards_rows = conn.execute("SELECT * FROM plan_cards WHERE plan_id = ?", (plan_id,)).fetchall()
@@ -39,7 +75,7 @@ def create_report_service(farmer_id: int, plan_id: int, mentor_id: int, share_fi
             ]
 
         token = new_share_token()
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         expires_at = (now + timedelta(days=expires_days)).isoformat()
 
         cursor = conn.execute(
