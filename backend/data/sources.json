@@ -1,0 +1,60 @@
+{
+  "items": [
+    {
+      "name": "NASA POWER",
+      "used_for": "Temperature, solar radiation, relative humidity, and climatological normals",
+      "resolution": "~50 km (0.5 deg)",
+      "latency": "Near Real-Time (~2 days)",
+      "limits": "Coarse spatial resolution; smooths micro-climates across adjacent village fields."
+    },
+    {
+      "name": "GPM IMERG",
+      "used_for": "Precipitation estimates, consecutive dry spells, extreme rainfall tracking",
+      "resolution": "~10 km (0.1 deg)",
+      "latency": "Final run ~3.5 months; Late run ~14 hours (provisional)",
+      "limits": "Satellite estimate; can miss highly localized convective monsoon showers."
+    },
+    {
+      "name": "MODIS (MOD13Q1)",
+      "used_for": "NDVI crop greenness curves, stress dips, fallow bare-field detection",
+      "resolution": "250 m (16-day composite)",
+      "latency": "1–2 weeks",
+      "limits": "Monsoon cloud cover creates imagery gaps; pixels aggregate mixed land cover."
+    },
+    {
+      "name": "SRTM GL1",
+      "used_for": "Elevation (DEM), slope percentage, low-lying flood-prone classification",
+      "resolution": "30 m (1 arc-second)",
+      "latency": "Static",
+      "limits": "Reflects surface canopy height and buildings; small drainage bunds not captured."
+    },
+    {
+      "name": "SMAP L4 / GLDAS",
+      "used_for": "Root-zone soil moisture anomaly, residual soil moisture at planting",
+      "resolution": "9 km to 25 km",
+      "latency": "2–3 days",
+      "limits": "Model-assimilated satellite product; serves as regional indicator."
+    },
+    {
+      "name": "ISRIC SoilGrids",
+      "used_for": "Soil pH, clay/sand texture, and organic carbon baseline estimate",
+      "resolution": "250 m",
+      "latency": "Static",
+      "limits": "Global machine learning prediction; labeled low confidence unless verified by Soil Health Card."
+    },
+    {
+      "name": "IMD Gridded Rainfall",
+      "used_for": "Rain-gauge based validation and local correction of satellite precipitation",
+      "resolution": "0.25 deg (~25 km)",
+      "latency": "Released with seasonal delay",
+      "limits": "Dependent on national rain gauge density."
+    },
+    {
+      "name": "KAU Package of Practices",
+      "used_for": "Crop growth duration, water requirements, temperature thresholds, nutrient cycles",
+      "resolution": "Regional agronomic standards",
+      "latency": "Static reference",
+      "limits": "Agronomic baselines require expert consultation for new cultivars."
+    }
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "common": {
+    "appName": "Field Shift",
+    "subtitle": "Adapting Farms with NASA Earth Data",
+    "loading": "Loading...",
+    "save": "Save",
+    "cancel": "Cancel",
+    "back": "Back",
+    "retry": "Retry",
+    "estimatesNote": "Estimates based on satellite and public data. Local agricultural review recommended before planting."
+  },
+  "nav": {
+    "fields": "My Fields",
+    "inbox": "Consultations",
+    "about": "About Analysis",
+    "logout": "Log Out"
+  },
+  "auth": {
+    "loginTitle": "Sign in to Field Shift",
+    "registerTitle": "Register Farm Account",
+    "contact": "Mobile Number or Email",
+    "password": "Password",
+    "name": "Full Name",
+    "role": "Account Type",
+    "farmerRole": "Farmer / Landholder",
+    "mentorRole": "Student Mentor / Advisor",
+    "loginButton": "Sign In",
+    "registerButton": "Create Account"
+  },
+  "field": {
+    "addField": "Add Field",
+    "name": "Field Name",
+    "location": "Location & Boundary",
+    "waterSource": "Water Source",
+    "waterQuality": "Water Quality",
+    "profileStatus": "Profile Status",
+    "elevation": "Elevation",
+    "slope": "Slope",
+    "floodProne": "Flood Prone",
+    "soilPh": "Soil pH",
+    "drainage": "Drainage Class",
+    "feasibleCrops": "Feasible Crops",
+    "history": "Cropping History",
+    "logSeason": "Log Completed Season",
+    "planNext": "Plan Next Season"
+  },
+  "plan": {
+    "title": "Season Crop Strategy",
+    "existingRotation": "Customary Rotation (Card 1)",
+    "alternative": "Adaptive Strategy",
+    "holdsUpBest": "Holds up best if conditions change",
+    "scenarioTitle": "Weather What-If Scenarios",
+    "rainSlider": "Rainfall Shift",
+    "tempSlider": "Temperature Offset",
+    "earnMore": "Earn More",
+    "playSafe": "Play Safe",
+    "goWithThis": "Go With This Plan",
+    "getHelp": "Consult Advisor",
+    "needsLocalReview": "Items for Local Agronomic Review"
+  },
+  "factor": {
+    "water": "Water Fit",
+    "rotation": "Rotation Benefit",
+    "temp": "Temperature Fit",
+    "soil": "Soil Compatibility",
+    "market": "Market Value",
+    "timing": "Season Timing"
+  },
+  "level": {
+    "green": "Looks fine",
+    "amber": "Watch this",
+    "red": "High risk"
+  }
+}

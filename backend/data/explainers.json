@@ -1,0 +1,50 @@
+{
+  "rainfall_anomaly": {
+    "title": "Rain compared with normal",
+    "body": "We compare the rain that fell in a week with the usual rain for that week over many years. A big gap below the usual amount is called a deficit. It can stress young plants, especially at planting and flowering."
+  },
+  "ndvi": {
+    "title": "Crop greenness (NDVI)",
+    "body": "NDVI is a number from satellite images that shows how green and healthy plants look. Higher means more green leaf. A drop below the usual level can mean stress, but it does not tell us the reason."
+  },
+  "water_balance": {
+    "title": "Water needed and water available",
+    "body": "Each crop needs a certain amount of water over its life. We compare that with the rain we expect plus any water already in the soil and any irrigation you have. The gap is what you would have to supply."
+  },
+  "normals": {
+    "title": "What is normal",
+    "body": "Normal means the typical value for a given week over about twenty years. We use it as a yardstick. A year can be far from normal and still happen again."
+  },
+  "confidence": {
+    "title": "How sure are we",
+    "body": "High means local data agrees with satellite data. Medium means satellite data only. Low means a rough estimate. Confidence is lowest when soil or rainfall information is missing."
+  },
+  "estimates_not_guarantees": {
+    "title": "Estimates, not guarantees",
+    "body": "These results are estimates from satellite and public data. They do not replace your own judgment or local advice. Please check the items marked for local review before you decide."
+  },
+  "rotation": {
+    "title": "Crop rotation",
+    "body": "Growing different kinds of crops one after another keeps soil healthier and breaks pest cycles. Pulses add nitrogen to the soil. Repeating the same crop many times in a row raises risk and cost."
+  },
+  "waterlogging": {
+    "title": "Too much water",
+    "body": "Some crops cannot stand water around their roots. On low-lying fields with slow drainage, extra rain can drown them. Rice tolerates standing water; most pulses and sesame do not."
+  },
+  "stored_soil_water": {
+    "title": "Water already in the soil",
+    "body": "After a wet season the soil can still hold water. Short-duration crops can use it. Tell us if the soil is dry, moist or wet now and we count it in the water estimate."
+  },
+  "evapotranspiration": {
+    "title": "Water lost to air and plants",
+    "body": "Heat and wind make water leave the soil and plants. When this loss is high, the same rain goes less far. We show it as context for the water estimate."
+  },
+  "cloud_gaps": {
+    "title": "Why some weeks have no image",
+    "body": "During the monsoon, clouds often hide the ground from satellites. When there is no clear image we say so instead of guessing."
+  },
+  "resolution": {
+    "title": "How detailed the data is",
+    "body": "A satellite sees the ground in squares. Rain data covers squares about ten kilometres wide, so a local shower can be missed. Greenness data is much finer, about 250 metres."
+  }
+}
