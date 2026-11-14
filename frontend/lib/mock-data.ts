@@ -50,6 +50,51 @@ export const MOCK_FIELDS: FieldItem[] = [
   },
 ];
 
+export const MOCK_STRATEGY_CARDS = [
+  {
+    id: 1,
+    card_type: "customary",
+    crop: "Paddy (Uma)",
+    name_ml: "ഉമ നെല്ല്",
+    headline: "Traditional High-Yield Wet Paddy",
+    suitability: "suitable",
+    resilience_score: 74,
+    expected_yield: "4.8 - 5.2 t/ha",
+    water_demand: "High (Canal continuous flow)",
+    key_advantages: ["High regional market demand", "Subsidized procurement support"],
+    climate_risks: ["Susceptible to late monsoon unseasonal cloudbursts"],
+    soil_compatibility: "Matches local pH 5.4 with liming practice",
+  },
+  {
+    id: 2,
+    card_type: "alternative_1",
+    crop: "Cowpea (Kanakamani)",
+    name_ml: "പയർ",
+    headline: "Nitrogen-Fixing Climate Shield",
+    suitability: "suitable",
+    resilience_score: 89,
+    expected_yield: "1.2 - 1.5 t/ha (High market value)",
+    water_demand: "Low (Residual soil moisture)",
+    key_advantages: ["Restores nitrogen naturally", "Drought tolerant in dry weeks"],
+    climate_risks: ["Requires well-drained bunds if water table surges"],
+    soil_compatibility: "Thrives in acid clay loam",
+  },
+  {
+    id: 3,
+    card_type: "alternative_2",
+    crop: "Sesame (Thilak)",
+    name_ml: "എള്ള്",
+    headline: "Short Duration Summer Rotation",
+    suitability: "marginal",
+    resilience_score: 68,
+    expected_yield: "600 - 800 kg/ha",
+    water_demand: "Very Low",
+    key_advantages: ["High cash return per quintal", "Minimal pest interventions"],
+    climate_risks: ["Sensitive to waterlogging during early seedling germination"],
+    soil_compatibility: "Requires raised bed cultivation",
+  },
+];
+
 export function getMockResponse<T>(path: string): T | null {
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
 
@@ -57,7 +102,7 @@ export function getMockResponse<T>(path: string): T | null {
     return { items: MOCK_FIELDS, next_cursor: null } as unknown as T;
   }
 
-  if (cleanPath === "/me") {
+  if (cleanPath === "/me" || cleanPath === "/me/prefs") {
     return MOCK_USER as unknown as T;
   }
 
@@ -89,5 +134,96 @@ export function getMockResponse<T>(path: string): T | null {
     } as unknown as T;
   }
 
-  return null;
+  if (cleanPath.includes("/history")) {
+    return {
+      seasons: [
+        {
+          id: 1,
+          crop_name: "Paddy (Uma)",
+          status: "completed",
+          start_date: "2025-06-15",
+          end_date: "2025-10-20",
+          outcome: "good",
+          approved_cause: "Adequate monsoon rainfall with minimal pest stress",
+        },
+        {
+          id: 2,
+          crop_name: "Cowpea",
+          status: "completed",
+          start_date: "2025-11-01",
+          end_date: "2026-01-15",
+          outcome: "moderate",
+          approved_cause: "Slight water deficit in late vegetative stage",
+        },
+      ],
+    } as unknown as T;
+  }
+
+  if (cleanPath.includes("/plans")) {
+    return {
+      id: 1,
+      field_id: 1,
+      field_name: "Kuttanad Demonstration Plot",
+      season: "puncha",
+      chosen_card_id: 2,
+      cards: MOCK_STRATEGY_CARDS,
+      plan_id: 1,
+    } as unknown as T;
+  }
+
+  if (cleanPath.includes("/seasons")) {
+    return {
+      id: 1,
+      field_id: 1,
+      crop_name: "Paddy (Uma)",
+      start_date: "2025-06-15",
+      end_date: "2025-10-20",
+      outcome: "moderate",
+      findings: [
+        {
+          id: 1,
+          metric: "Precipitation Deficit (GPM IMERG)",
+          finding: "-32% lower rain during vegetative tillering phase (Week 28-30)",
+          severity: "warning",
+        },
+        {
+          id: 2,
+          metric: "Thermal Stress (NASA POWER)",
+          finding: "Daytime surface temperatures exceeded 34.5°C threshold on 4 consecutive days",
+          severity: "caution",
+        },
+      ],
+      recommendations: [
+        "Introduce short-duration pulse like Cowpea in rotation to break pest cycle and optimize residual soil moisture.",
+      ],
+    } as unknown as T;
+  }
+
+  if (cleanPath.includes("/inbox")) {
+    return {
+      items: [
+        {
+          id: 1,
+          farmer_name: "Kerala Demo Farmer",
+          field_name: "Kuttanad Demonstration Plot",
+          report_type: "Crop Rotation Strategy",
+          created_at: "2026-11-14T08:00:00Z",
+          status: "pending_review",
+        },
+      ],
+    } as unknown as T;
+  }
+
+  if (cleanPath.includes("/reports")) {
+    return {
+      id: 1,
+      title: "Kuttanad Plot Season Report",
+      farmer_name: "Kerala Demo Farmer",
+      comments: [
+        { id: 1, author: "Extension Officer (Krishi Bhavan)", text: "Soil tests confirm acidic pH 5.4. Apply agricultural dolomite before seed sowing." },
+      ],
+    } as unknown as T;
+  }
+
+  return { field_id: 1, plan_id: 1, id: 1, success: true } as unknown as T;
 }

@@ -4,43 +4,32 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-
-    --primary: 142.1 76.2% 36.3%;
-    --primary-foreground: 355.7 100% 97.3%;
-
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 142.1 76.2% 36.3%;
-
+    --background: 37 39% 96%;
+    --foreground: 28 25% 12%;
+    --card: 37 35% 98%;
+    --card-foreground: 28 25% 12%;
+    --popover: 37 35% 98%;
+    --popover-foreground: 28 25% 12%;
+    --primary: 152 55% 25%;
+    --primary-foreground: 37 39% 96%;
+    --secondary: 33 25% 90%;
+    --secondary-foreground: 28 25% 18%;
+    --muted: 33 18% 92%;
+    --muted-foreground: 28 10% 45%;
+    --accent: 33 30% 86%;
+    --accent-foreground: 28 25% 12%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 37 39% 96%;
+    --border: 33 20% 85%;
+    --input: 33 20% 85%;
+    --ring: 152 55% 25%;
     --radius: 0.75rem;
-
-    /* Semantic traffic-light risk tokens */
-    --good: #1f7a4d;
-    --good-bg: #e6f4ec;
-    --watch: #a15c00;
-    --watch-bg: #fdf1dc;
-    --risk: #b42318;
-    --risk-bg: #fde8e6;
+    --good: #2d6a4f;
+    --good-bg: #d8f3dc;
+    --watch: #9a6700;
+    --watch-bg: #fff3cd;
+    --risk: #9b2c2c;
+    --risk-bg: #fed7d7;
   }
 }
 
@@ -49,7 +38,7 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }

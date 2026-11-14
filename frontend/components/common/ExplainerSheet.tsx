@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { HelpCircle, X } from "lucide-react";
+import { api } from "@/lib/api";
 
 export function ExplainerSheet({
   explainerKey,
@@ -15,13 +16,12 @@ export function ExplainerSheet({
 
   useEffect(() => {
     if (open && !card) {
-      fetch(`/api/explainers/${explainerKey}`)
-        .then((res) => res.json())
+      api<{ title: string; body: string }>(`/explainers/${explainerKey}`)
         .then((data) => setCard(data))
         .catch(() =>
           setCard({
-            title: "Science Explainer",
-            body: "Satellite observations are compared against historical multi-year baselines.",
+            title: "NASA Earth Science Explainer",
+            body: "Satellite observations (NASA POWER solar radiation, GPM IMERG precipitation, SRTM DEM elevation) are combined with 20-year climatological baselines to determine risk thresholds and optimal agronomic planting windows.",
           })
         );
     }
