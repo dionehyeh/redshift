@@ -239,7 +239,7 @@ export default async function FieldDetailPage({
 
       {/* Field Map Section */}
       {mapData && (
-        <section className="rounded-3xl border-2 border-stone-200 bg-white p-6 shadow-sm space-y-4">
+        <section className="rounded-3xl border-2 border-stone-200 bg-white p-6 shadow-sm space-y-4 relative z-0 isolate">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="text-xl font-extrabold text-stone-900">Field Map</h2>

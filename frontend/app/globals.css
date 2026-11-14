@@ -42,3 +42,20 @@
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
+
+/* ── Leaflet Stacking Context Fix ── */
+/* Prevent Leaflet default high z-indexes from bleeding over sticky navbars and modals */
+.leaflet-container {
+  z-index: 0 !important;
+  isolation: isolate !important;
+}
+.leaflet-pane {
+  z-index: 10 !important;
+}
+.leaflet-top,
+.leaflet-bottom {
+  z-index: 20 !important;
+}
+.leaflet-control {
+  z-index: 25 !important;
+}

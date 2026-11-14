@@ -199,6 +199,73 @@ export function getMockResponse<T>(path: string): T | null {
     } as unknown as T;
   }
 
+  if (cleanPath.includes("/timeline")) {
+    const weeks = Array.from({ length: 52 }, (_, i) => i + 1);
+    const rainNormals = weeks.map((w) => (w >= 22 && w <= 36 ? 80 + Math.sin(w) * 35 : 12 + Math.random() * 8));
+    const rainObserved = rainNormals.map((r, i) => (i >= 25 && i <= 29 ? r * 0.65 : r * (0.9 + Math.random() * 0.2)));
+    const tempNormals = weeks.map((w) => 27 + Math.sin((w / 52) * Math.PI) * 5);
+    const tempObserved = tempNormals.map((t) => t + (Math.random() * 1.5 - 0.5));
+    const ndviObserved = weeks.map((w) => (w >= 24 && w <= 42 ? 0.68 + Math.sin(w) * 0.12 : 0.35 + Math.random() * 0.08));
+
+    return {
+      weeks,
+      source_note: "NASA POWER Daily (0.5° resolution) + GPM IMERG Final precipitation baselines (20-year climatology)",
+      series: {
+        rain_mm: {
+          values: rainObserved,
+          source: "GPM IMERG Late Run v06",
+          resolution: "10 km (0.1°)",
+          is_normal: false,
+        },
+        tmean: {
+          values: tempObserved,
+          source: "NASA POWER Thermal",
+          resolution: "50 km (0.5°)",
+          is_normal: false,
+        },
+        ndvi: {
+          values: ndviObserved,
+          source: "MODIS MOD13Q1 16-Day",
+          resolution: "250 m",
+          is_normal: false,
+        },
+      },
+      normals: {
+        rain_mm: rainNormals,
+        tmean: tempNormals,
+        ndvi: ndviObserved.map((n) => n * 0.95),
+      },
+    } as unknown as T;
+  }
+
+  if (cleanPath.includes("/map")) {
+    return {
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          geometry: {
+            type: "Polygon",
+            coordinates: [
+              [
+                [76.514, 9.581],
+                [76.519, 9.581],
+                [76.519, 9.585],
+                [76.514, 9.585],
+                [76.514, 9.581],
+              ],
+            ],
+          },
+          properties: {
+            name: "Plot Boundary",
+            area_ha: 1.2,
+            flood_prone: true,
+          },
+        },
+      ],
+    } as unknown as T;
+  }
+
   if (cleanPath.includes("/inbox")) {
     return {
       items: [

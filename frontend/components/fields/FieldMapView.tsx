@@ -30,7 +30,7 @@ export default function FieldMapView({
       center={[lat, lon]}
       zoom={13}
       scrollWheelZoom={false}
-      className="h-72 w-full rounded-xl"
+      className="h-72 w-full rounded-2xl relative z-0 isolate"
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
