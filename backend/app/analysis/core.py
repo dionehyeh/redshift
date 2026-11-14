@@ -36,9 +36,14 @@ def to_weekly(
     sc = [c for c in sum_cols if c in df]
     mc = [c for c in mean_cols if c in df]
     g = df.groupby(["year", "week"])
-    days = g.size()
-    out = pd.concat([g[sc].sum(min_count=1).mul(7.0 / days, axis=0), g[mc].mean()], axis=1)
-    out["days"] = days
+    out = pd.DataFrame(index=g.size().index)
+    for col in sc:
+        valid_days = g[col].count()
+        totals = g[col].sum(min_count=1)
+        out[col] = totals.mul(7.0 / valid_days.where(valid_days > 0))
+    for col in mc:
+        out[col] = g[col].mean()
+    out["days"] = g.size()
     return out
 
 # ---------- 19.6 Normals ----------
@@ -49,16 +54,28 @@ def weekly_normals(
     year_to: int | None = None,
 ) -> pd.DataFrame:
     """Compute 52-week mean, std and count per week. Thin weeks are filled circularly."""
+    if not isinstance(wk.index, pd.MultiIndex) or not {"year", "week"}.issubset(wk.index.names):
+        raise ValueError("weekly data must have a MultiIndex named 'year' and 'week'")
+    missing_cols = set(cols).difference(wk.columns)
+    if missing_cols:
+        raise ValueError(f"weekly data is missing columns: {', '.join(sorted(missing_cols))}")
+    if wk.empty:
+        raise ValueError("weekly data cannot be empty")
     yrs = wk.index.get_level_values("year")
-    sel = wk[(yrs >= (year_from or yrs.min())) & (yrs <= (year_to or yrs.max()))]
+    first_year = int(yrs.min()) if year_from is None else year_from
+    last_year = int(yrs.max()) if year_to is None else year_to
+    if first_year > last_year:
+        raise ValueError("year_from must not be after year_to")
+    sel = wk[(yrs >= first_year) & (yrs <= last_year)]
     g = sel.groupby(level="week")[cols].agg(["mean", "std", "count"])
     g = g.reindex(range(1, 53))
     for c in cols:
         g.loc[g[(c, "count")] < MIN_YEARS, [(c, "mean"), (c, "std")]] = np.nan
         for stat in ("mean", "std"):
             s = g[(c, stat)]
-            ext = pd.concat([s, s, s]).interpolate(limit_direction="both")
-            g[(c, stat)] = ext.iloc[52:104].values
+            if s.notna().any():
+                ext = pd.concat([s, s, s]).interpolate(limit_direction="both")
+                g[(c, stat)] = ext.iloc[52:104].values
     return g
 
 def normals_arrays(g: pd.DataFrame, cols: list[str]) -> dict[str, list[float]]:
@@ -140,6 +157,19 @@ def build_findings(
 ) -> tuple[list[dict], list[str]]:
     cal = stage_calendar(crop["duration_days"], crop["flower_frac"])
     findings = []
+    arrays = {
+        "rain_z": np.asarray(rain_z, dtype=float),
+        "rain_pct": np.asarray(rain_pct, dtype=float),
+        "tmax": np.asarray(tmax, dtype=float),
+        "ndvi": np.asarray(ndvi, dtype=float),
+        "ndvi_z": np.asarray(ndvi_z, dtype=float),
+    }
+    lengths = {len(values) for values in arrays.values()}
+    if len(lengths) != 1 or (season_weeks and len(season_weeks) != len(rain_z)):
+        raise ValueError("season data arrays and week labels must have matching lengths")
+
+    def week_label(index: int) -> int:
+        return season_weeks[index] if season_weeks else index + 1
 
     def add(kind: str, run: tuple[int, int], key: str, sev_base: float, extra: dict):
         s, e = run
@@ -148,7 +178,7 @@ def build_findings(
         findings.append(
             {
                 "kind": kind,
-                "weeks": [s + 1, e + 1],
+                "weeks": [week_label(s), week_label(e)],
                 "crop_stage": stage,
                 "message_key": key,
                 "severity": round(sev_base * (e - s + 1) * STAGE_WEIGHT[stage], 2),
@@ -157,17 +187,18 @@ def build_findings(
             }
         )
 
-    for r in rain_deficit_runs(rain_z):
-        sub_pct = np.asarray(rain_pct)[r[0] : r[1] + 1]
+    for r in rain_deficit_runs(np.where(np.isfinite(arrays["rain_z"]), arrays["rain_z"], np.inf)):
+        sub_pct = arrays["rain_pct"][r[0] : r[1] + 1]
         add(
             "rain_deficit",
             r,
             "finding.rain_deficit",
-            float(abs(np.mean(np.asarray(rain_z)[r[0] : r[1] + 1]))),
+            float(abs(np.mean(arrays["rain_z"][r[0] : r[1] + 1]))),
             {"deviation": f"{np.mean(sub_pct):.0f}%"},
         )
-    for r in heat_runs(tmax, crop["t_flower_max"]):
-        sub_t = np.asarray(tmax)[r[0] : r[1] + 1]
+    safe_tmax = np.where(np.isfinite(arrays["tmax"]), arrays["tmax"], -np.inf)
+    for r in heat_runs(safe_tmax, crop["t_flower_max"]):
+        sub_t = arrays["tmax"][r[0] : r[1] + 1]
         diff = float(np.mean(sub_t) - crop["t_flower_max"])
         add(
             "heat",
@@ -176,17 +207,38 @@ def build_findings(
             diff,
             {"deviation": f"+{diff:.1f} C above limit"},
         )
-    for r in ndvi_dip_runs(ndvi_z):
+    safe_ndvi_z = np.where(np.isfinite(arrays["ndvi_z"]), arrays["ndvi_z"], np.inf)
+    for r in ndvi_dip_runs(safe_ndvi_z):
         add(
             "ndvi_dip",
             r,
             "finding.ndvi_dip",
-            float(abs(np.nanmean(np.asarray(ndvi_z)[r[0] : r[1] + 1]))),
+            float(abs(np.nanmean(arrays["ndvi_z"][r[0] : r[1] + 1]))),
             {"deviation": "greenness below normal"},
         )
 
+    for r in cloud_gap_runs(arrays["ndvi"]):
+        add(
+            "cloud_gap",
+            r,
+            "finding.cloud_gap",
+            0.0,
+            {"deviation": "no clear NDVI observation", "data_gap": True},
+        )
+    for r in bare_runs(arrays["ndvi"]):
+        add(
+            "bare_field",
+            r,
+            "finding.bare_field",
+            float(max(0.0, 0.25 - np.nanmean(arrays["ndvi"][r[0] : r[1] + 1]))),
+            {"deviation": "low vegetation cover", "data_gap": False},
+        )
+
     findings.sort(key=lambda f: -f["severity"])
-    gaps = [f"No clear image in weeks {a + 1} to {b + 1} (cloud cover)" for a, b in cloud_gap_runs(ndvi)]
+    gaps = [
+        f"No clear image in weeks {week_label(a)} to {week_label(b)} (cloud cover)"
+        for a, b in cloud_gap_runs(arrays["ndvi"])
+    ]
     return findings, gaps
 
 # ---------- 19.12 Likely-Cause Synthesis ----------
@@ -240,13 +292,26 @@ def water_outlook(
 
 # ---------- 19.15 Terrain & Flood ----------
 def slope_percent(dem: np.ndarray, cell_m: float = 30.0) -> float:
+    if dem.ndim != 2 or min(dem.shape) < 3:
+        raise ValueError("DEM must be a two-dimensional grid at least 3 by 3")
+    if not np.isfinite(cell_m) or cell_m <= 0:
+        raise ValueError("cell_m must be a positive finite distance")
     gy, gx = np.gradient(dem.astype(float), cell_m)
     s = np.hypot(gx, gy)
     mid_y, mid_x = dem.shape[0] // 2, dem.shape[1] // 2
-    return float(np.nanmean(s[mid_y - 1 : mid_y + 2, mid_x - 1 : mid_x + 2]) * 100)
+    center_slope = s[mid_y - 1 : mid_y + 2, mid_x - 1 : mid_x + 2]
+    if not np.isfinite(center_slope).any():
+        raise ValueError("DEM has no valid elevations around its center")
+    return float(np.nanmean(center_slope) * 100)
 
 def relative_elevation(dem: np.ndarray) -> float:
+    if dem.ndim != 2 or dem.size == 0:
+        raise ValueError("DEM must be a non-empty two-dimensional grid")
+    if not np.isfinite(dem).any():
+        raise ValueError("DEM has no valid elevations")
     c = dem[dem.shape[0] // 2, dem.shape[1] // 2]
+    if not np.isfinite(c):
+        raise ValueError("DEM center elevation is missing")
     return float(c - np.nanpercentile(dem, 10))
 
 def flood_prone(elev_m: float, rel_elev_m: float, slope_pct: float) -> bool:
@@ -269,8 +334,13 @@ def stored_soil_water(
     wilting: float = 0.10,
     field_cap: float = 0.35,
 ) -> tuple[float, str, str]:
-    if answer in ANSWER_FRACTION:
-        return round(cap_mm * ANSWER_FRACTION[answer], 1), "high", "farmer answer"
+    if not np.isfinite(cap_mm) or cap_mm < 0:
+        raise ValueError("cap_mm must be a non-negative finite value")
+    if not np.isfinite(wilting) or not np.isfinite(field_cap) or field_cap <= wilting:
+        raise ValueError("field_cap must be greater than a finite wilting point")
+    normalized_answer = answer.lower() if isinstance(answer, str) else None
+    if normalized_answer in ANSWER_FRACTION:
+        return round(cap_mm * ANSWER_FRACTION[normalized_answer], 1), "high", "farmer answer"
     if sm_vol is not None and not np.isnan(sm_vol):
         f = min(1.0, max(0.0, (sm_vol - wilting) / (field_cap - wilting)))
         return round(cap_mm * f, 1), "medium", "satellite normal soil moisture"

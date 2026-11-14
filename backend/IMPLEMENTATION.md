@@ -57,3 +57,9 @@ app/routers/system.py     <-> app/schemas/system.py     (Endpoints 36–37)
   - Verify slider rainfall monotonicity.
 - **Integration Tests (`tests/test_api_flow.py`):**
   - Execute the authenticated end-to-end flow: Clerk session -> create field -> analyze season -> generate plan -> rescore -> choose card -> share report.
+- **Field API Tests (`tests/test_fields.py`):**
+  - Cover all field routes, request validation, profile-readiness behavior, and field ownership.
+  - Assert timeline values are padded/truncated to 52 weeks and maps do not invent a boundary when none was supplied.
+
+The field router must delegate persistence to `app/services/field_service.py`. Climate timelines use available weekly observations and normals; never synthesize missing observed-history or NDVI values.
+Changing field coordinates invalidates the previous derived profile and queues a fresh onboarding job. Farmers can submit manual soil corrections after that rebuild completes.
