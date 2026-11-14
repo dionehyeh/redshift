@@ -25,6 +25,9 @@ export default function MentorLayout({
             <Link href="/inbox" className="text-slate-700 hover:text-blue-700">
               Shared Requests
             </Link>
+            <Link href="/profile" className="text-slate-700 hover:text-blue-700">
+              Account
+            </Link>
             <UserButton />
           </nav>
         </div>

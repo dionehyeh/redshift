@@ -46,6 +46,13 @@ All error responses (4xx, 5xx) strictly follow this structure:
 | 3 | `GET` | `/me` | Clerk session | Fetch or provision the current application profile, including preferences |
 | 4 | `PATCH` | `/me/prefs` | Clerk session | Update language (en/ml), market toggle, and default-share consent; returns the updated profile |
 
+`GET /me` returns `id`, `name`, `role`, `language`, `contact`, optional `helper_type`,
+`market_toggle` (`earn_more`, `play_safe`, or `null`), and
+`default_share_consent` (`0` or `1`). `PATCH /me/prefs` accepts any subset of
+`language`, `market_toggle`, and `default_share_consent`; send `market_toggle: null`
+to clear the planning default. These endpoints use the common error envelope for
+unauthenticated requests, invalid preference values, and profile provisioning failures.
+
 ### Fields Management
 | # | Method | Path | Auth | Description |
 |---|---|---|---|---|

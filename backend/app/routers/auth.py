@@ -25,17 +25,25 @@ def update_user_preferences(body: UserPrefsUpdate, user: dict = Depends(current_
                 "UPDATE users SET language = ? WHERE id = ?",
                 (language, user["id"]),
             )
-        if market_toggle is not None or default_share_consent is not None:
+        if "market_toggle" in changes or "default_share_consent" in changes:
             conn.execute(
                 "INSERT INTO farmer_prefs (user_id) VALUES (?) ON CONFLICT (user_id) DO NOTHING",
                 (user["id"],),
             )
+        if "market_toggle" in changes:
             conn.execute(
-                """UPDATE farmer_prefs
-                   SET market_toggle = COALESCE(?, market_toggle),
-                       default_share_consent = COALESCE(?, default_share_consent)
-                   WHERE user_id = ?""",
-                (market_toggle, default_share_consent, user["id"]),
+                "UPDATE farmer_prefs SET market_toggle = ? WHERE user_id = ?",
+                (market_toggle, user["id"]),
+            )
+        if "default_share_consent" in changes:
+            conn.execute(
+                "UPDATE farmer_prefs SET default_share_consent = ? WHERE user_id = ?",
+                (
+                    default_share_consent
+                    if default_share_consent is not None
+                    else 0,
+                    user["id"],
+                ),
             )
         profile = read_user_profile(conn, user["id"])
         if not profile:

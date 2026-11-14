@@ -26,12 +26,11 @@ class FakeConnection:
         if query.startswith("UPDATE users SET language"):
             self.profile["language"] = params[0]
             return FakeCursor()
-        if query.startswith("UPDATE farmer_prefs"):
-            market_toggle, default_share_consent = params[:2]
-            if market_toggle is not None:
-                self.profile["market_toggle"] = market_toggle
-            if default_share_consent is not None:
-                self.profile["default_share_consent"] = default_share_consent
+        if query.startswith("UPDATE farmer_prefs SET market_toggle"):
+            self.profile["market_toggle"] = params[0]
+            return FakeCursor()
+        if query.startswith("UPDATE farmer_prefs SET default_share_consent"):
+            self.profile["default_share_consent"] = params[0]
             return FakeCursor()
         if query.startswith("INSERT INTO users"):
             self.inserted_user = params
@@ -161,6 +160,26 @@ def test_preferences_reject_out_of_range_consent_value(monkeypatch):
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "VALIDATION"
+
+
+def test_market_preference_can_be_cleared(monkeypatch):
+    profile = {
+        "id": 4,
+        "name": "A Farmer",
+        "role": "farmer",
+        "language": "en",
+        "contact": "farmer@example.test",
+        "helper_type": None,
+        "market_toggle": "play_safe",
+        "default_share_consent": 0,
+    }
+    client, connection = create_profile_client(monkeypatch, profile)
+
+    response = client.patch("/api/v1/me/prefs", json={"market_toggle": None})
+
+    assert response.status_code == 200
+    assert response.json()["market_toggle"] is None
+    assert connection.profile["market_toggle"] is None
 
 
 def test_clerk_provisioning_uses_only_trusted_public_role(monkeypatch):

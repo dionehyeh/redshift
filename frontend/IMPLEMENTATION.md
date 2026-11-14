@@ -11,6 +11,7 @@ This guide covers the Next.js frontend, Clerk authentication, the backend proxy,
 3. `app/api/[...path]/route.ts` proxies browser API requests to `API_BASE_URL/api/v1/*` and attaches the Clerk session token as a bearer token. Tokens are obtained server-side and are not written to browser storage.
 4. `lib/server-api.ts` obtains the same session token for Server Component data requests.
 5. FastAPI verifies Clerk tokens using the configured issuer and JWKS URL. The backend provisions a local application profile on first use.
+6. `/auth/redirect` calls `GET /api/me` after sign-in/sign-up and redirects using the backend's trusted role. `/profile` reads the same profile and persists preferences through `PATCH /api/me/prefs`.
 
 Configure `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, the Clerk sign-in/sign-up paths, and `API_BASE_URL` in `frontend/.env.local`. The backend needs the same Clerk secret key plus `CLERK_ISSUER` and `CLERK_JWKS_URL`.
 
