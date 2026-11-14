@@ -8,6 +8,7 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 
 class Settings(BaseModel):
+    demo_mode: bool = os.getenv("DEMO_MODE", "false").lower() in ("true", "1")
     database_url: str = os.getenv("DATABASE_URL", "")
     clerk_secret_key: str = os.getenv("CLERK_SECRET_KEY", "")
     clerk_issuer: str = os.getenv("CLERK_ISSUER", "")
