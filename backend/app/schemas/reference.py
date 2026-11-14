@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 
+
 class CropSummary(BaseModel):
     id: str
     name: dict[str, str]

@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends
 
@@ -110,12 +110,12 @@ def add_comment(id: int, body: CommentCreateRequest, user: dict = Depends(requir
             (user["id"], id),
         )
 
-        created_at = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+        created_at = datetime.now(UTC).replace(tzinfo=None).isoformat()
         return {"id": comment_id, "author_label": label, "body": body.text, "created_at": created_at}
 
 @router.post("/reports/{id}/revoke")
 def revoke_report(id: int, user: dict = Depends(require_role("farmer"))):
-    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+    now = datetime.now(UTC).replace(tzinfo=None).isoformat()
     with get_db() as conn:
         report = conn.execute(
             """SELECT r.id, r.revoked_at FROM reports r
@@ -141,7 +141,7 @@ def revoke_report(id: int, user: dict = Depends(require_role("farmer"))):
 
 @router.get("/mentor/inbox")
 def get_mentor_inbox(user: dict = Depends(require_role("mentor", "officer"))):
-    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+    now = datetime.now(UTC).replace(tzinfo=None).isoformat()
     with get_db() as conn:
         rows = conn.execute(
             """SELECT r.id as report_id, u.name as farmer_name, r.created_at, r.status, r.expires_at 

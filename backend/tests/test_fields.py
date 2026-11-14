@@ -11,7 +11,6 @@ from app.errors import register_error_handlers
 from app.routers import fields as fields_router
 from app.services import climate_service
 
-
 USER = {
     "id": 7,
     "role": "farmer",

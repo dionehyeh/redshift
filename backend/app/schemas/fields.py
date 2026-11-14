@@ -63,7 +63,9 @@ def _validate_boundary_geojson(value: str | None) -> str | None:
         return False
 
     if not isinstance(boundary, dict):
-        raise ValueError("boundary_geojson must be a GeoJSON object")
+        raise ValueError(  # noqa: TRY004
+            "boundary_geojson must be a GeoJSON object"
+        )
 
     boundary_type = boundary.get("type")
     if boundary_type == "Feature":

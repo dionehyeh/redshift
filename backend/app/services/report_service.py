@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from app.db import get_db
 from app.errors import AppError
@@ -21,7 +21,7 @@ def report_is_active(report: dict) -> bool:
             "Stored report expiration is invalid",
             status=500,
         ) from exc
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if expiry.tzinfo is None:
         now = now.replace(tzinfo=None)
     else:
@@ -137,7 +137,7 @@ def create_report_service(farmer_id: int, plan_id: int, mentor_id: int, share_fi
             ]
 
         token = new_share_token()
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.now(UTC).replace(tzinfo=None)
         expires_at = (now + timedelta(days=expires_days)).isoformat()
 
         cursor = conn.execute(
