@@ -4,7 +4,7 @@
 > **Pilot Region:** Kerala, India (One demonstration field, 6–8 rotational crops)
 
 Field Shift is an agricultural decision-support platform designed to help smallholder farmers adapt planting strategies using 20+ years of NASA Earth observations harmonized with local ground truth (Soil Health Cards, state weather stations, farmer corrections).
-![](https://github.com/redshift/tenor.gif)
+![](https://github.com/dionehyeh/redshift/blob/main/tenor.gif)
 
 ---
 
