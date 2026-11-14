@@ -69,6 +69,9 @@ enable MODIS NDVI and GPM IMERG point-series extraction; without Earth Engine ac
 the backend retains NASA POWER rainfall and reports the missing NDVI data instead of
 generating synthetic observations.
 
+`DEMO_MODE` controls the health endpoint's demo-source status and defaults to `false`.
+Accepted values are `1`/`true`/`yes`/`on` and `0`/`false`/`no`/`off`.
+
 Pre-fetch a NASA POWER cell's historical data and normals before a demo or analysis:
 ```bash
 python scripts/pull_cell.py --lat 9.5 --lon 76.4
@@ -80,3 +83,7 @@ window. The script requires network access to NASA POWER.
 ```bash
 pytest tests/
 ```
+
+The `Backend checks` GitHub Actions workflow runs the complete backend test suite
+and lints the configuration, health endpoint, and API-flow tests on backend pull
+requests and pushes to `main`.
