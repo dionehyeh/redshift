@@ -37,7 +37,6 @@ export interface FieldMetric {
   source: string;
   resolution: string | null;
   confidence: string;
-  estimate?: Record<string, number | null>;
 }
 
 export interface FieldProfile {
@@ -51,7 +50,6 @@ export interface FieldProfile {
   water_quality: string;
   profile_status: FieldProfileStatus;
   profile: Record<string, FieldMetric>;
-  gaps: string[];
   climate_cell_id: string | null;
   created_at: string;
 }

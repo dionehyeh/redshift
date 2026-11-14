@@ -38,19 +38,11 @@ export default function FieldMapView({
       />
       <GeoJSON
         data={data}
-        style={(feature) => {
-          const floodProne = feature?.properties?.flood_prone;
-          return {
-            color:
-              floodProne === true
-                ? "#b42318"
-                : floodProne === false
-                ? "#047857"
-                : "#64748b",
-            weight: 3,
-            fillOpacity: 0.18,
-          };
-        }}
+        style={(feature) => ({
+          color: feature?.properties?.flood_prone ? "#b42318" : "#047857",
+          weight: 3,
+          fillOpacity: 0.18,
+        })}
       />
       <FitFieldBounds data={data} />
     </MapContainer>
