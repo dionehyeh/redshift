@@ -156,7 +156,9 @@ def temp_score(crop: dict, tmean: list[float], tmax: list[float], offset: float)
     return clamp(score)
 
 def soil_score(crop: dict, field: dict, bare_gap_days: int) -> float:
-    ph = field.get("ph") or field.get("soil_ph")
+    ph = field.get("ph")
+    if ph is None:
+        ph = field.get("soil_ph")
     if ph is None:
         ph_fit = 60.0
     else:
@@ -169,7 +171,8 @@ def soil_score(crop: dict, field: dict, bare_gap_days: int) -> float:
     benefit = {"fixer": 100.0, "neutral": 60.0, "heavy": 30.0}.get(crop["n_effect"], 60.0)
     if crop.get("om_bonus"):
         benefit += 10
-    if crop.get("erosion_cover") and field.get("slope", "low") != "low":
+    slope = field.get("slope")
+    if crop.get("erosion_cover") and slope is not None and slope != "low":
         benefit += 10
     if bare_gap_days >= 40 and crop["duration_days"] <= bare_gap_days:
         benefit += 10

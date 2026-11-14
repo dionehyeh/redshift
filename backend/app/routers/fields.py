@@ -5,20 +5,25 @@ from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response
 
+from app.deps import own_field, require_role
+from app.errors import AppError
 from app.schemas.fields import (
+    FeasibleCropsResponse,
     FieldCreateRequest,
     FieldCreateResponse,
+    FieldListResponse,
     FieldPatchRequest,
     FieldPatchResponse,
     FieldProfileResponse,
-    FeasibleCropsResponse,
-    FieldListResponse,
-    TimelineResponse,
-    MapResponse,
     HistoryResponse,
+    MapResponse,
+    TimelineResponse,
 )
-from app.deps import require_role, own_field
-from app.errors import AppError
+from app.services.climate_service import (
+    ClimateDataUnavailable,
+    grid_cell_id,
+    load_cell_timeline,
+)
 from app.services.field_service import (
     create_field_record,
     list_feasible_crops,
@@ -26,10 +31,6 @@ from app.services.field_service import (
     list_field_records,
     onboard_field_task,
     update_field_record,
-)
-from app.services.climate_service import (
-    ClimateDataUnavailable,
-    load_cell_timeline,
 )
 
 logger = logging.getLogger(__name__)
@@ -124,12 +125,15 @@ def get_field_profile(id: int, field: dict = Depends(get_owned_field)):
                     f"Stored field metadata for {key} is invalid",
                     status=500,
                 )
-            return {
+            metric = {
                 "value": m.get("value", default_value),
                 "source": m.get("source", default_source),
                 "resolution": m.get("resolution", resolution),
                 "confidence": m.get("confidence", confidence),
             }
+            if isinstance(m.get("estimate"), dict):
+                metric["estimate"] = m["estimate"]
+            return metric
         # Fall back to column value or supplied default
         col_value = field.get(key, default_value)
         return {
@@ -185,6 +189,9 @@ def get_field_profile(id: int, field: dict = Depends(get_owned_field)):
         "water_quality": field["water_quality"],
         "profile_status": field["profile_status"],
         "profile": profile,
+        "gaps": meta.get("gaps", [])
+        if isinstance(meta.get("gaps"), list)
+        else [],
         "climate_cell_id": field.get("climate_cell_id"),
         "created_at": str(field["created_at"]),
     }
@@ -283,14 +290,12 @@ def get_field_timeline(
 ):
     cell_id = field.get("climate_cell_id")
     if not cell_id:
-        lat, lon = field["lat"], field["lon"]
-        cell_lat = round(lat * 2) / 2
-        cell_lon = round(lon * 2) / 2
-        lat_hem = "N" if cell_lat >= 0 else "S"
-        lon_hem = "E" if cell_lon >= 0 else "W"
-        cell_id = f"{abs(cell_lat):04.1f}{lat_hem}_{abs(cell_lon):05.1f}{lon_hem}"
+        cell_id = grid_cell_id(field["lat"], field["lon"])
     try:
-        climate_data = load_cell_timeline(cell_id)
+        climate_data = load_cell_timeline(
+            cell_id,
+            point=(field["lat"], field["lon"]),
+        )
     except ClimateDataUnavailable as exc:
         raise AppError(
             "DATA_UNAVAILABLE",
@@ -335,6 +340,12 @@ def get_field_timeline(
         "tmax": "NASA POWER maximum temperature",
         "ndvi": "MODIS vegetation index",
     }
+    observation_sources = climate_data.get("observation_sources", {})
+    if str(observation_sources.get("rain_mm", "")).startswith("NASA GPM IMERG"):
+        source_names["rain_mm"] = "NASA GPM IMERG precipitation"
+        resolutions["rain_mm"] = "~11 km"
+    if observation_sources.get("ndvi") == "MODIS MOD13Q1":
+        source_names["ndvi"] = "MODIS MOD13Q1 vegetation index"
     series = {}
     for key in metric_keys:
         observation = observed_values.get(key)
@@ -368,6 +379,9 @@ def get_field_timeline(
             f"Solid lines show weekly observations from {historical_year}; dashed lines "
             "show climatological normals. Metrics not available from a source are omitted."
         )
+    source_gaps = climate_data.get("source_gaps", [])
+    if source_gaps:
+        source_note = f"{source_note} {'; '.join(source_gaps)}."
 
     return {
         "field_id": id,

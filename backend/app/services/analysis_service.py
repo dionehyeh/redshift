@@ -19,7 +19,8 @@ from app.analysis.core import (
 from app.db import get_db
 from app.engine.scoring import load_crops
 from app.jobs import complete_job, fail_job, update_job_step
-from app.services.climate_service import load_cell_weekly
+from app.services.climate_service import load_cell_weekly, load_point_imerg_weekly
+from app.services.earth_engine_service import EarthObservationDataUnavailable
 
 logger = logging.getLogger(__name__)
 WEATHER_COLUMNS = ("rain_mm", "tmean", "tmax")
@@ -63,6 +64,9 @@ def analyze_weekly_data(
     start_date: date,
     end_date: date,
     crop: dict,
+    rainfall_observations: dict[tuple[int, int], float | None] | None = None,
+    rain_source: str = "NASA POWER",
+    rain_resolution: str = "~50 km",
 ) -> tuple[list[dict], list[str], str]:
     """Build findings from a season window and its available historical weekly series."""
     if start_date > end_date:
@@ -83,6 +87,10 @@ def analyze_weekly_data(
     keys = _week_keys(start_date, end_date)
     week_index = pd.MultiIndex.from_tuples(keys, names=["year", "week"])
     observed = analysis_weekly.reindex(week_index)
+    if "rain_mm" in observed and rainfall_observations:
+        for key, value in rainfall_observations.items():
+            if key in observed.index and value is not None:
+                observed.loc[key, "rain_mm"] = value
     weeks = [week for _, week in keys]
     gaps: list[str] = []
     source_meta = {}
@@ -115,7 +123,12 @@ def analyze_weekly_data(
             gaps.append(f"Historical {column} normals cover fewer than 10 years")
         return _finite_values(anomaly["z"])
 
-    rain_z = metric("rain_mm", "rain_deficit", "NASA POWER", "~50 km")
+    rain_z = metric(
+        "rain_mm",
+        "rain_deficit",
+        rain_source,
+        rain_resolution,
+    )
     rain_frame = (
         anomalies(observed[["rain_mm"]], normal_frame, "rain_mm")
         if "rain_mm" in observed
@@ -201,7 +214,7 @@ def analyze_season_task(job_id: str, season_id: int) -> None:
         update_job_step(job_id, "loading_season", 20)
         with get_db() as conn:
             row = conn.execute(
-                """SELECT s.*, c.name AS crop_name, f.climate_cell_id
+                """SELECT s.*, c.name AS crop_name, f.climate_cell_id, f.lat, f.lon
                    FROM seasons s
                    JOIN fields f ON f.id = s.field_id
                    LEFT JOIN crops c ON c.id = s.crop_id
@@ -223,8 +236,45 @@ def analyze_season_task(job_id: str, season_id: int) -> None:
             raise ValueError(f"Crop {season['crop_name']} is missing from the analysis catalog")
 
         update_job_step(job_id, "calculating_anomalies", 50)
-        weekly = load_cell_weekly(season["climate_cell_id"])
-        findings, gaps, comparison_years = analyze_weekly_data(weekly, start, end, crop)
+        point = (season["lat"], season["lon"])
+        weekly = load_cell_weekly(season["climate_cell_id"], point=point)
+        season_keys = set(_week_keys(start, end))
+        rainfall_observations = {}
+        rain_source = "NASA POWER"
+        rain_resolution = "~50 km"
+        for year in range(start.isocalendar().year, end.isocalendar().year + 1):
+            try:
+                imerg = load_point_imerg_weekly(point[0], point[1], year)
+            except EarthObservationDataUnavailable as exc:
+                logger.warning(
+                    "GPM IMERG unavailable for field %s in %s; retaining NASA POWER observations",
+                    season_id,
+                    year,
+                    exc_info=exc,
+                )
+                continue
+            rainfall_observations.update(
+                {
+                    (year, week): value
+                    for week, value in imerg.items()
+                    if value is not None and (year, week) in season_keys
+                }
+            )
+        if rainfall_observations:
+            rain_source = (
+                "NASA GPM IMERG observations (provisional status possible) "
+                "with NASA POWER gap fallback"
+            )
+            rain_resolution = "~11 km IMERG; ~50 km POWER normals"
+        findings, gaps, comparison_years = analyze_weekly_data(
+            weekly,
+            start,
+            end,
+            crop,
+            rainfall_observations,
+            rain_source,
+            rain_resolution,
+        )
         update_job_step(job_id, "synthesizing_stress_flags", 80)
         causes = likely_causes(findings, season.get("suspected_cause"))
 

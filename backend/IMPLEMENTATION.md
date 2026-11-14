@@ -8,8 +8,11 @@ This guide details the structural contracts, design patterns, and operational ru
 
 | Service | File | Primary Responsibility | External Dependencies |
 |---|---|---|---|
-| `field_service` | `app/services/field_service.py` | Create fields, trigger onboarding jobs, compute slope & flood flag from SRTM, update manual farmer soil corrections | SRTM DEM, SoilGrids |
-| `climate_service` | `app/services/climate_service.py` | Fetch NASA POWER, IMERG, MODIS NDVI; aggregate weekly; write/read Parquet cell cache | `requests`, `earthaccess`, `xarray` |
+| `field_service` | `app/services/field_service.py` | Create fields, trigger onboarding jobs, persist SRTM/SoilGrids profiles, update farmer corrections | `terrain_service`, `soil_service` |
+| `terrain_service` | `app/services/terrain_service.py` | Sample the SRTM 30 m neighborhood and derive slope/local-relief estimates | OpenTopoData `srtm30m` endpoint |
+| `soil_service` | `app/services/soil_service.py` | Query and scale ISRIC soil pH, organic carbon, and texture fractions | SoilGrids v2.0 REST API |
+| `climate_service` | `app/services/climate_service.py` | Fetch NASA POWER, merge optional IMERG/MODIS point observations, aggregate weekly, cache Parquet series | `requests`, `earth_engine_service` |
+| `earth_engine_service` | `app/services/earth_engine_service.py` | Retrieve quality-filtered MODIS NDVI composites and coverage-checked IMERG weeks | Earth Engine project and application credentials |
 | `analysis_service` | `app/services/analysis_service.py` | Run 20-year normals, compute z-scores, detect stress runs, format findings | `app.analysis.core` |
 | `scoring_service` | `app/services/scoring_service.py` | Apply hard filters, calculate 6 factor scores, rank 3 cards | `app.engine.scoring` |
 | `plan_service` | `app/services/plan_service.py` | Generate plans, handle debounced slider rescoring, record chosen plan | `scoring_service`, `text_service` |
