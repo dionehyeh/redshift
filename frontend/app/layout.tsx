@@ -4,8 +4,9 @@ import "leaflet/dist/leaflet.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Field Shift - Adapting Farms with NASA Data",
-  description: "Decision-support platform for smallholder farmers using NASA Earth observations.",
+  title: "Field Shift — Adapting Farms with NASA Data",
+  description:
+    "Decision-support platform for smallholder farmers using NASA Earth observations.",
 };
 
 export default function RootLayout({
@@ -16,7 +17,7 @@ export default function RootLayout({
   return (
     <ClerkProvider>
       <html lang="en">
-        <body className="min-h-screen bg-slate-50 antialiased font-sans">
+        <body className="min-h-screen bg-stone-100 antialiased">
           {children}
         </body>
       </html>

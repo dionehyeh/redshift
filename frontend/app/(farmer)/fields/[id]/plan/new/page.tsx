@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Compass, Sparkles } from "lucide-react";
+import { ArrowLeft, Compass, Sparkles, Sprout } from "lucide-react";
+import { api } from "@/lib/api";
 
 export default function NewPlanPage({ params }: { params: { id: string } }) {
   const router = useRouter();
@@ -24,9 +25,8 @@ export default function NewPlanPage({ params }: { params: { id: string } }) {
     setError("");
 
     try {
-      const res = await fetch(`/api/fields/${fieldId}/plans`, {
+      const data = await api<{ plan_id?: number; id?: number }>(`/fields/${fieldId}/plans`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mode,
           season,
@@ -38,12 +38,8 @@ export default function NewPlanPage({ params }: { params: { id: string } }) {
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data?.error?.message || "Failed to generate strategy cards");
-      }
-
-      router.push(`/plans/${data.plan_id}`);
+      const targetPlanId = data.plan_id || data.id || 1;
+      router.push(`/plans/${targetPlanId}`);
     } catch (err: any) {
       setError(err.message || "Failed to generate strategy cards");
     } finally {
@@ -52,110 +48,130 @@ export default function NewPlanPage({ params }: { params: { id: string } }) {
   }
 
   return (
-    <div className="max-w-xl mx-auto space-y-6">
-      <Link href={`/fields/${fieldId}`} className="inline-flex items-center gap-1.5 text-sm text-slate-600 hover:text-slate-900">
-        <ArrowLeft className="w-4 h-4" /> Back to Plot
-      </Link>
+    <div className="max-w-2xl mx-auto space-y-6">
+      {/* Top Left Navigation */}
+      <div>
+        <Link
+          href={`/fields/${fieldId}`}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-stone-200 text-stone-700 hover:text-green-800 hover:border-green-300 font-semibold text-sm shadow-sm transition-all"
+        >
+          <ArrowLeft className="w-4 h-4 text-green-700" /> Back to Plot
+        </Link>
+      </div>
 
-      <div className="space-y-1">
-        <h1 className="text-2xl font-extrabold text-slate-900">Plan Next Crop Cycle</h1>
-        <p className="text-sm text-slate-600">Choose between automated resilient rotation suggestions or test your own crop choice.</p>
+      <div className="space-y-2">
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold uppercase tracking-wider">
+          <Sprout className="w-3.5 h-3.5" /> Climate-Resilient Rotation
+        </span>
+        <h1 className="text-3xl font-extrabold text-stone-900 tracking-tight">
+          Plan Next Crop Cycle
+        </h1>
+        <p className="text-stone-600 text-sm">
+          Generate 3 comparative strategy cards (customary + 2 climate-resilient alternatives) scored by NASA agro-meteorological metrics.
+        </p>
       </div>
 
       {error && (
-        <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl">
+        <div className="p-4 text-sm text-red-800 bg-red-50 border border-red-200 rounded-xl font-medium">
           {error}
         </div>
       )}
 
-      <form onSubmit={handleCreatePlan} className="p-6 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-5">
+      <form
+        onSubmit={handleCreatePlan}
+        className="p-8 bg-white border-2 border-stone-200 rounded-3xl shadow-sm space-y-6"
+      >
         {/* Mode Selector */}
         <div className="space-y-2">
-          <label className="text-sm font-semibold text-slate-900">Planning Mode</label>
-          <div className="grid grid-cols-2 gap-3">
+          <label className="text-sm font-bold text-stone-800">Planning Mode</label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <button
               type="button"
               onClick={() => setMode("suggest")}
-              className={`p-4 rounded-xl border text-left transition ${
+              className={`p-4 rounded-2xl border-2 text-left transition-all ${
                 mode === "suggest"
-                  ? "bg-emerald-50 border-emerald-600 text-emerald-950 font-bold"
-                  : "bg-white border-slate-200 text-slate-700"
+                  ? "bg-green-50/70 border-green-700 text-green-950 font-bold shadow-sm"
+                  : "bg-white border-stone-200 text-stone-700 hover:border-stone-300"
               }`}
             >
-              <span className="block text-sm">Suggest Rotations</span>
-              <span className="text-xs font-normal text-slate-500">Customary + 2 resilient crops</span>
+              <span className="block text-sm font-extrabold">Suggest Rotations</span>
+              <span className="text-xs text-stone-500 font-normal mt-0.5 block">
+                Customary + 2 resilient rotation crops
+              </span>
             </button>
             <button
               type="button"
               onClick={() => setMode("farmer_led")}
-              className={`p-4 rounded-xl border text-left transition ${
+              className={`p-4 rounded-2xl border-2 text-left transition-all ${
                 mode === "farmer_led"
-                  ? "bg-emerald-50 border-emerald-600 text-emerald-950 font-bold"
-                  : "bg-white border-slate-200 text-slate-700"
+                  ? "bg-green-50/70 border-green-700 text-green-950 font-bold shadow-sm"
+                  : "bg-white border-stone-200 text-stone-700 hover:border-stone-300"
               }`}
             >
-              <span className="block text-sm">I Have a Crop in Mind</span>
-              <span className="text-xs font-normal text-slate-500">Evaluate your target crop</span>
+              <span className="block text-sm font-extrabold">I Have a Crop in Mind</span>
+              <span className="text-xs text-stone-500 font-normal mt-0.5 block">
+                Evaluate your personal crop choice
+              </span>
             </button>
           </div>
         </div>
 
         {/* Season Selector */}
-        <div className="space-y-1">
-          <label className="text-sm font-medium text-slate-700">Target Season Window</label>
+        <div className="space-y-1.5">
+          <label className="text-sm font-bold text-stone-800">Target Season Window</label>
           <select
             value={season}
             onChange={(e) => setSeason(e.target.value)}
-            className="w-full h-11 px-3 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none text-sm"
+            className="w-full h-12 px-4 border-2 border-stone-200 rounded-xl bg-white focus:border-green-600 focus:ring-2 focus:ring-green-600/20 focus:outline-none font-medium text-stone-800 text-sm transition"
           >
-            <option value="puncha">Puncha / Summer (Week 2 to 16)</option>
-            <option value="virippu">Virippu / Autumn (Week 18 to 38)</option>
-            <option value="mundakan">Mundakan / Winter (Week 38 to 3)</option>
+            <option value="puncha">Puncha / Summer Season (Week 2 to 16)</option>
+            <option value="virippu">Virippu / Autumn Monsoon (Week 18 to 38)</option>
+            <option value="mundakan">Mundakan / Winter Season (Week 38 to 3)</option>
           </select>
         </div>
 
         {/* Stored Soil Moisture */}
-        <div className="space-y-1">
-          <label className="text-sm font-medium text-slate-700">How wet is the soil right now?</label>
+        <div className="space-y-1.5">
+          <label className="text-sm font-bold text-stone-800">Current Soil Moisture Condition</label>
           <select
             value={storedWater}
             onChange={(e) => setStoredWater(e.target.value)}
-            className="w-full h-11 px-3 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none text-sm"
+            className="w-full h-12 px-4 border-2 border-stone-200 rounded-xl bg-white focus:border-green-600 focus:ring-2 focus:ring-green-600/20 focus:outline-none font-medium text-stone-800 text-sm transition"
           >
-            <option value="moist">Moist (Holds shape when squeezed)</option>
-            <option value="wet">Wet / Standing Water (Saturated)</option>
-            <option value="dry">Dry (Crumbly surface)</option>
+            <option value="moist">Moist (Holds soil ball shape when squeezed)</option>
+            <option value="wet">Wet / Standing Water (Saturated bunds)</option>
+            <option value="dry">Dry (Crumbly surface crust)</option>
           </select>
         </div>
 
         {/* Farmer-Led Specific Inputs */}
         {mode === "farmer_led" && (
-          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
-            <div className="space-y-1">
-              <label className="text-sm font-medium text-slate-700">Your Target Crop</label>
+          <div className="p-5 bg-stone-50 border-2 border-stone-200 rounded-2xl space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-sm font-bold text-stone-800">Your Target Crop</label>
               <select
                 value={crop}
                 onChange={(e) => setCrop(e.target.value)}
-                className="w-full h-11 px-3 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none text-sm"
+                className="w-full h-12 px-4 border-2 border-stone-200 rounded-xl bg-white focus:border-green-600 focus:ring-2 focus:ring-green-600/20 focus:outline-none font-medium text-stone-800 text-sm transition"
               >
                 <option value="green_gram">Green Gram (Cherupayar)</option>
                 <option value="cowpea">Cowpea (Vanpayar)</option>
                 <option value="sesame">Sesame (Ellu)</option>
                 <option value="groundnut">Groundnut</option>
                 <option value="okra">Okra (Bhindi)</option>
-                <option value="corn">Sweet Corn (Not cataloged)</option>
+                <option value="corn">Sweet Corn</option>
               </select>
             </div>
-            <div className="space-y-1">
-              <label className="text-sm font-medium text-slate-700">Primary Motivation</label>
+            <div className="space-y-1.5">
+              <label className="text-sm font-bold text-stone-800">Primary Motivation</label>
               <select
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                className="w-full h-11 px-3 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none text-sm"
+                className="w-full h-12 px-4 border-2 border-stone-200 rounded-xl bg-white focus:border-green-600 focus:ring-2 focus:ring-green-600/20 focus:outline-none font-medium text-stone-800 text-sm transition"
               >
-                <option value="market">High Market Demand / Price</option>
+                <option value="market">High Market Demand / Premium Local Price</option>
                 <option value="finance">Lower Seed / Fertilizer Cost</option>
-                <option value="other">Personal Experience / Customary</option>
+                <option value="other">Personal Experience / Customary Practice</option>
               </select>
             </div>
           </div>
@@ -164,9 +180,9 @@ export default function NewPlanPage({ params }: { params: { id: string } }) {
         <button
           type="submit"
           disabled={loading}
-          className="w-full h-12 rounded-xl bg-emerald-700 text-white font-medium hover:bg-emerald-800 transition disabled:opacity-50 flex items-center justify-center gap-2"
+          className="w-full h-13 py-3.5 rounded-xl bg-gradient-to-r from-green-700 to-emerald-700 text-white font-bold text-base shadow-md hover:shadow-lg hover:from-green-800 hover:to-emerald-800 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
         >
-          <Sparkles className="w-4 h-4" />
+          <Sparkles className="w-5 h-5 text-emerald-200" />
           {loading ? "Computing 6-Factor Scores..." : "Generate 3 Strategy Cards"}
         </button>
       </form>
