@@ -1,16 +1,17 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from app.config import settings
-from app.errors import register_error_handlers
 from app.db import init_db
+from app.errors import register_error_handlers
 
 # Router imports
 from app.routers.auth import user_router
 from app.routers.fields import router as fields_router
-from app.routers.seasons import router as seasons_router
 from app.routers.plans import router as plans_router
-from app.routers.reports import router as reports_router
 from app.routers.reference import router as reference_router
+from app.routers.reports import router as reports_router
+from app.routers.seasons import router as seasons_router
 from app.routers.system import router as system_router
 
 app = FastAPI(

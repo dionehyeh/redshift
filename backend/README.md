@@ -87,9 +87,10 @@ window. The script requires network access to NASA POWER.
 
 ### Running Tests
 ```bash
-pytest tests/
+python -m pytest -q
+python -m ruff check app tests
 ```
 
 The `Backend checks` GitHub Actions workflow runs the complete backend test suite
-and lints the configuration, health endpoint, and API-flow tests on backend pull
-requests and pushes to `main`.
+and lints all backend application and test code on backend pull requests and
+pushes to `main`.

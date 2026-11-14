@@ -1,5 +1,4 @@
 import re
-import json
 
 NUM = re.compile(r"\d+(?:[.,]\d+)?")
 
@@ -14,7 +13,7 @@ def _flat_numbers(obj, acc: set[str]) -> set[str]:
         pass
     elif isinstance(obj, (int, float)):
         acc.add(f"{obj:g}")
-        acc.add(str(int(round(obj))))
+        acc.add(str(round(obj)))
     elif isinstance(obj, str):
         for m in NUM.findall(obj):
             acc.add(m.replace(",", "."))

@@ -1,12 +1,9 @@
 from app.engine.scoring import (
-    load_crops,
     get_weights,
-    water_score,
     rotation_score,
-    evaluate,
-    pick_three,
-    verdict,
+    water_score,
 )
+
 
 def test_rotation_fixer_after_heavy_feeder():
     heavy_crop = {"name": "paddy", "family": "Poaceae", "n_effect": "heavy", "repeat_penalty": 15}

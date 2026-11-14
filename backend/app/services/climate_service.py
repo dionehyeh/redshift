@@ -149,7 +149,9 @@ def fetch_power_daily(
     for api_name, column_name in POWER_PARAMETERS.items():
         records = parameter_data.get(api_name)
         if not isinstance(records, dict):
-            raise RuntimeError(f"NASA POWER response is missing {api_name}")
+            raise RuntimeError(  # noqa: TRY004
+                f"NASA POWER response is missing {api_name}"
+            )
         values = pd.Series(records, dtype=float)
         values.index = pd.to_datetime(values.index, format="%Y%m%d", errors="raise")
         columns[column_name] = values
@@ -390,10 +392,10 @@ def load_cell_timeline(
         year
         for year in available_years
         if set(range(1, 53)).issubset(
-            set(
+            {
                 int(week)
                 for week in weekly.xs(year, level="year").index.tolist()
-            )
+            }
         )
     ]
     year = complete_years[-1] if complete_years else available_years[-1]
