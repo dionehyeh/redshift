@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from app.db import get_db
-from app.deps import current_user
+from app.deps import current_user, read_user_profile
 from app.schemas.auth import UserPrefsUpdate, UserResponse
 
 user_router = APIRouter(tags=["User Profile"])
@@ -12,22 +12,42 @@ def get_current_user_profile(user: dict = Depends(current_user)):
     return user
 
 
-@user_router.patch("/me/prefs")
-def update_user_preferences(
-    body: UserPrefsUpdate, user: dict = Depends(current_user)
-):
+@user_router.patch("/me/prefs", response_model=UserResponse)
+def update_user_preferences(body: UserPrefsUpdate, user: dict = Depends(current_user)):
+    changes = body.model_dump(exclude_unset=True)
+    language = changes.get("language")
+    market_toggle = changes.get("market_toggle")
+    default_share_consent = changes.get("default_share_consent")
+
     with get_db() as conn:
-        if body.language:
+        if language is not None:
             conn.execute(
                 "UPDATE users SET language = ? WHERE id = ?",
-                (body.language, user["id"]),
+                (language, user["id"]),
             )
-        if body.market_toggle is not None or body.default_share_consent is not None:
+        if "market_toggle" in changes or "default_share_consent" in changes:
             conn.execute(
-                """UPDATE farmer_prefs
-                   SET market_toggle = COALESCE(?, market_toggle),
-                       default_share_consent = COALESCE(?, default_share_consent)
-                   WHERE user_id = ?""",
-                (body.market_toggle, body.default_share_consent, user["id"]),
+                "INSERT INTO farmer_prefs (user_id) VALUES (?) ON CONFLICT (user_id) DO NOTHING",
+                (user["id"],),
             )
-    return {"status": "updated"}
+        if "market_toggle" in changes:
+            conn.execute(
+                "UPDATE farmer_prefs SET market_toggle = ? WHERE user_id = ?",
+                (market_toggle, user["id"]),
+            )
+        if "default_share_consent" in changes:
+            conn.execute(
+                "UPDATE farmer_prefs SET default_share_consent = ? WHERE user_id = ?",
+                (
+                    default_share_consent
+                    if default_share_consent is not None
+                    else 0,
+                    user["id"],
+                ),
+            )
+        profile = read_user_profile(conn, user["id"])
+        if not profile:
+            raise RuntimeError(
+                "The authenticated user profile disappeared during update"
+            )
+        return profile

@@ -12,6 +12,8 @@ frontend/
 │   ├── layout.tsx                   # Root HTML shell, fonts & providers
 │   ├── globals.css                  # Tailwind styles & semantic risk tokens
 │   ├── page.tsx                     # Landing page & login redirect
+│   ├── profile/page.tsx             # App profile and saved user preferences
+│   ├── auth/redirect/page.tsx       # Provision profile and redirect by role
 │   ├── about/page.tsx               # Data transparency & limitations
 │   ├── (auth)/                      # Authentication route group
 │   ├── (farmer)/                    # Farmer operations route group
@@ -60,6 +62,10 @@ Set `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` in
 `frontend/.env.local`. The backend also needs the same Clerk secret key, its issuer URL,
 and its JWKS URL in `backend/.env`. Client API calls pass a Clerk session token through
 the Next.js proxy; the FastAPI backend verifies it against Clerk's JWKS.
+
+After Clerk sign-in or sign-up, the frontend calls `GET /api/me` through the proxy to
+provision/read the Field Shift profile and routes by the trusted application role.
+`/profile` loads that profile and saves preferences through `PATCH /api/me/prefs`.
 
 ### Type Generation from FastAPI OpenAPI
 With the backend running on `http://localhost:8000`:

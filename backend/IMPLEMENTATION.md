@@ -24,7 +24,7 @@ This guide details the structural contracts, design patterns, and operational ru
 All routers must reside in `app/routers/` and use Pydantic schemas from `app/schemas/`:
 
 ```
-app/routers/auth.py       <-> app/schemas/auth.py       (Endpoints 1–4)
+app/routers/auth.py       <-> app/schemas/auth.py       (Current profile & preferences; Clerk owns signup/sign-in)
 app/routers/fields.py     <-> app/schemas/fields.py     (Endpoints 5–12)
 app/routers/seasons.py    <-> app/schemas/seasons.py    (Endpoints 13–18)
 app/routers/plans.py      <-> app/schemas/plans.py      (Endpoints 19–22)
@@ -41,6 +41,7 @@ app/routers/system.py     <-> app/schemas/system.py     (Endpoints 36–37)
 2. **Never Write in Analysis:** Analysis functions in `app/analysis/` and `app/engine/` must be pure functions with zero database side effects.
 3. **No Raw SQL in Routers:** Routers only call service methods; SQL queries are restricted to service/repository functions.
 4. **PostgreSQL:** The Neon schema is initialized from `data/schema.sql`; inserts that need generated IDs use `RETURNING id`. Keep SQL portable to PostgreSQL and use `ON CONFLICT` instead of SQLite-only upsert syntax.
+5. **API Errors:** All application, HTTP, request-validation, and unexpected errors use the documented `{"error": {"code", "message", "details"}}` envelope. Validation responses must not echo submitted values; unexpected exceptions are logged server-side and returned without internal details.
 
 ---
 
@@ -57,3 +58,5 @@ app/routers/system.py     <-> app/schemas/system.py     (Endpoints 36–37)
   - Verify slider rainfall monotonicity.
 - **Integration Tests (`tests/test_api_flow.py`):**
   - Execute the authenticated end-to-end flow: Clerk session -> create field -> analyze season -> generate plan -> rescore -> choose card -> share report.
+- **Authentication & Error Tests (`tests/test_auth.py`, `tests/test_errors.py`):**
+  - Require a Clerk bearer session for profile access, verify profile provisioning trusts only Clerk `public_metadata`, validate preferences, and preserve the common error envelope without exposing submitted values or internal exception messages.

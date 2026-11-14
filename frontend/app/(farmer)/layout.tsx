@@ -28,6 +28,9 @@ export default function FarmerLayout({
             <Link href="/about" className="text-slate-700 hover:text-emerald-700">
               About Data
             </Link>
+            <Link href="/profile" className="text-slate-700 hover:text-emerald-700">
+              Account
+            </Link>
             <UserButton />
           </nav>
         </div>

@@ -2,10 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-
-type UserProfile = {
-  role: string;
-};
+import { api } from "@/lib/api";
+import type { UserProfile } from "@/lib/types";
 
 export default function AuthRedirectPage() {
   const router = useRouter();
@@ -16,15 +14,7 @@ export default function AuthRedirectPage() {
 
     async function redirectUser() {
       try {
-        const response = await fetch("/api/me", { cache: "no-store" });
-        if (
-          !response.ok ||
-          !response.headers.get("content-type")?.includes("application/json")
-        ) {
-          throw new Error("Unable to load your account profile");
-        }
-
-        const user = (await response.json()) as UserProfile;
+        const user = await api<UserProfile>("/me");
         if (active) {
           router.replace(
             user.role === "mentor" || user.role === "officer"

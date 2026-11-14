@@ -24,6 +24,9 @@ All error responses (4xx, 5xx) strictly follow this structure:
 
 ### 1.2 Common Error Codes
 - `UNAUTHENTICATED` (401): Missing, invalid, or expired Clerk session token.
+- `IDENTITY_PROVIDER_UNAVAILABLE` (503): Clerk signing keys or user profile service could not be reached.
+- `AUTH_CONFIGURATION` (503): Required Clerk issuer, JWKS, or secret-key configuration is missing.
+- `ACCOUNT_CONFLICT` (409): Authenticated Clerk contact is already attached to another local profile.
 - `FORBIDDEN` (403): Role or ownership mismatch.
 - `NOT_FOUND` (404): Resource does not exist (or belongs to another farmer).
 - `FIELD_NOT_READY` (409): Field profile or normals are still building.
@@ -40,8 +43,15 @@ All error responses (4xx, 5xx) strictly follow this structure:
 |---|---|---|---|---|
 | 1 | Clerk | `/register` | Public | Create an identity using Clerk's signup flow |
 | 2 | Clerk | `/login` | Public | Authenticate using Clerk's sign-in flow |
-| 3 | `GET` | `/me` | Clerk session | Fetch or provision the current application profile |
-| 4 | `PATCH` | `/me/prefs` | Clerk session | Update language (en/ml), market toggles, default sharing |
+| 3 | `GET` | `/me` | Clerk session | Fetch or provision the current application profile, including preferences |
+| 4 | `PATCH` | `/me/prefs` | Clerk session | Update language (en/ml), market toggle, and default-share consent; returns the updated profile |
+
+`GET /me` returns `id`, `name`, `role`, `language`, `contact`, optional `helper_type`,
+`market_toggle` (`earn_more`, `play_safe`, or `null`), and
+`default_share_consent` (`0` or `1`). `PATCH /me/prefs` accepts any subset of
+`language`, `market_toggle`, and `default_share_consent`; send `market_toggle: null`
+to clear the planning default. These endpoints use the common error envelope for
+unauthenticated requests, invalid preference values, and profile provisioning failures.
 
 ### Fields Management
 | # | Method | Path | Auth | Description |
