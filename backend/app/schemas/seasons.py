@@ -1,5 +1,7 @@
 from typing import Literal
+
 from pydantic import BaseModel, Field
+
 
 class SeasonCreateRequest(BaseModel):
     crop: str = Field(..., min_length=1)
@@ -44,5 +46,6 @@ class SeasonAnalysisResponse(BaseModel):
     approval_status: str
     comparison_years: str
     findings: list[FindingResponse]
-    gaps: list[str] = []
+    gaps: list[str] = Field(default_factory=list)
+    likely_causes: dict | None = None
     followup_question: str | None = None

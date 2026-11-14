@@ -75,6 +75,13 @@ unauthenticated requests, invalid preference values, and profile provisioning fa
 | 17 | `GET` | `/seasons/{id}/analysis` | Farmer | Get diagnosed findings, stress flags, gaps, and questions |
 | 18 | `POST` | `/findings/{id}/review` | Farmer/Mentor | Confirm, correct, or reject a diagnosed finding |
 
+Season analysis reports the actual climatology period, data gaps, and likely causes
+from the completed analysis job. If an analysis is not complete, the response does
+not invent findings or observations. Findings include a value unit when applicable;
+rainfall deviations are percentages and heat deviations are degrees Celsius.
+Unavailable source data is reported as a gap and completes the job as
+`done_with_gaps`.
+
 ### Crop Planning & Scenario Simulation
 | # | Method | Path | Auth | Description |
 |---|---|---|---|---|

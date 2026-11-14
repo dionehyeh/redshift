@@ -1,21 +1,23 @@
 import numpy as np
 import pandas as pd
+
 from app.analysis.core import (
-    clean_daily,
-    to_weekly,
-    weekly_normals,
     anomalies,
+    build_findings,
+    clean_daily,
+    likely_causes,
+    lowest,
+    relative_elevation,
     runs,
-    rain_deficit_runs,
+    slope_percent,
     stage_calendar,
     stage_of,
-    build_findings,
-    water_outlook,
     stored_soil_water,
-    lowest,
-    slope_percent,
-    relative_elevation,
+    to_weekly,
+    water_outlook,
+    weekly_normals,
 )
+
 
 def test_clean_daily_handles_missing():
     df = pd.DataFrame({"rain_mm": [-999, 15.0, -10.0], "t2m": [-9999, 28.5, 30.0]})
@@ -24,6 +26,13 @@ def test_clean_daily_handles_missing():
     assert cleaned["rain_mm"].iloc[1] == 15.0
     assert cleaned["rain_mm"].iloc[2] == 0.0  # clipped negative
     assert np.isnan(cleaned["t2m"].iloc[0])
+
+def test_clean_daily_scales_modis_ndvi_and_masks_its_fill_value():
+    cleaned = clean_daily(pd.DataFrame({"ndvi": [5000.0, -3000.0]}))
+    assert cleaned["ndvi"].iloc[0] == 0.5
+    assert np.isnan(cleaned["ndvi"].iloc[1])
+    scaled = clean_daily(pd.DataFrame({"ndvi": [0.4]}))
+    assert scaled["ndvi"].iloc[0] == 0.4
 
 def test_to_weekly_clips_week_53():
     # Construct 10-day range spanning new year
@@ -87,15 +96,25 @@ def test_stored_soil_water_hierarchy():
 
     # Satellite fallback
     val_sat, conf_sat, _ = stored_soil_water(answer=None, sm_vol=0.25)
+    assert val_sat == 90.0
     assert conf_sat == "medium"
 
     # Default fallback
     val_def, conf_def, _ = stored_soil_water(answer=None, sm_vol=None)
+    assert val_def == 45.0
     assert conf_def == "low"
 
 def test_lowest_confidence():
     assert lowest("high", "medium", "low") == "low"
     assert lowest("high", "high", "medium") == "medium"
+
+def test_water_outlook_wraps_at_year_end_and_validates_normal_shape():
+    outlook = water_outlook([float(week) for week in range(1, 53)], 52, 3, (0.8, 1.2))
+    assert outlook["low_mm"] == 44
+    assert outlook["mid_mm"] == 55
+    assert outlook["high_mm"] == 66
+    with np.testing.assert_raises(ValueError):
+        water_outlook([10.0] * 51, 1, 12)
 
 def test_findings_include_nan_gaps_and_bare_field_runs_with_calendar_weeks():
     crop = {
@@ -120,6 +139,33 @@ def test_findings_include_nan_gaps_and_bare_field_runs_with_calendar_weeks():
     assert bare["weeks"] == [10, 17]
     assert gap["weeks"] == [18, 19]
     assert gaps == ["No clear image in weeks 18 to 19 (cloud cover)"]
+
+def test_findings_skip_heat_outside_flowering_and_report_unavailable_ndvi():
+    crop = {
+        "duration_days": 140,
+        "flower_frac": (0.4, 0.6),
+        "t_flower_max": 35,
+    }
+    tmax = [40.0, 40.0] + [30.0] * 6 + [40.0, 40.0] + [30.0] * 10
+    findings, gaps = build_findings(
+        list(range(1, 21)),
+        [0.0] * 20,
+        [0.0] * 20,
+        tmax,
+        None,
+        None,
+        crop,
+        {},
+    )
+    heat = [finding for finding in findings if finding["kind"] == "heat"]
+    assert [finding["weeks"] for finding in heat] == [[9, 10]]
+    assert gaps == ["NDVI observations are unavailable for this season"]
+    assert likely_causes([{"kind": "cloud_gap", "weeks": [1, 2], "crop_stage": "vegetative"}])["suspected"] == []
+
+def test_build_findings_rejects_mismatched_ndvi_arrays():
+    crop = {"duration_days": 140, "flower_frac": (0.4, 0.6), "t_flower_max": 35}
+    with np.testing.assert_raises(ValueError):
+        build_findings([1], [0.0], [0.0], [30.0], [0.2], None, crop, {})
 
 def test_terrain_calculations_validate_dem_and_return_expected_values():
     dem = np.tile(np.arange(5, dtype=float), (5, 1))
