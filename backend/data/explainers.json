@@ -1,27 +1,63 @@
 {
   "rainfall_anomaly": {
     "title": "Rain compared with normal",
-    "body": "We compare the rain that fell in a week with the usual rain for that week over many years. A big gap below the usual amount is called a deficit. It can stress young plants, especially at planting and flowering."
+    "body": "We compare the rain that fell in a week with the usual rain for that week over many years. A big gap below the usual amount is called a deficit. It can stress young plants, especially at planting and flowering.",
+    "translations": {
+      "ml": {
+        "title": "സാധാരണ മഴയുമായി താരതമ്യം",
+        "body": "ഒരു ആഴ്ചയിൽ ലഭിച്ച മഴയെ, വർഷങ്ങളായി ആ ആഴ്ചയിൽ സാധാരണ ലഭിക്കുന്ന മഴയുമായി ഞങ്ങൾ താരതമ്യം ചെയ്യുന്നു. പതിവിനെക്കാൾ വളരെ കുറഞ്ഞ മഴയെ മഴക്കുറവ് എന്ന് പറയുന്നു. ഇത് പ്രത്യേകിച്ച് നടീലിന്റെയും പൂവിടലിന്റെയും സമയത്ത് ഇളം ചെടികൾക്ക് സമ്മർദമുണ്ടാക്കാം."
+      }
+    }
   },
   "ndvi": {
     "title": "Crop greenness (NDVI)",
-    "body": "NDVI is a number from satellite images that shows how green and healthy plants look. Higher means more green leaf. A drop below the usual level can mean stress, but it does not tell us the reason."
+    "body": "NDVI is a number from satellite images that shows how green and healthy plants look. Higher means more green leaf. A drop below the usual level can mean stress, but it does not tell us the reason.",
+    "translations": {
+      "ml": {
+        "title": "വിളകളുടെ പച്ചപ്പിന്റെ സൂചിക (NDVI)",
+        "body": "സാറ്റലൈറ്റ് ചിത്രങ്ങൾ ഉപയോഗിച്ച് ചെടികൾ എത്ര പച്ചയും ആരോഗ്യവുമുള്ളവയാണെന്ന് കാണിക്കുന്ന സംഖ്യയാണ് NDVI. ഉയർന്ന മൂല്യം കൂടുതൽ പച്ചിലകളെ സൂചിപ്പിക്കുന്നു. പതിവിനെക്കാൾ താഴെയുള്ള മൂല്യം സമ്മർദം കാണിക്കാം; എന്നാൽ അതിന്റെ കാരണം ഇതിലൂടെ അറിയാനാവില്ല."
+      }
+    }
   },
   "water_balance": {
     "title": "Water needed and water available",
-    "body": "Each crop needs a certain amount of water over its life. We compare that with the rain we expect plus any water already in the soil and any irrigation you have. The gap is what you would have to supply."
+    "body": "Each crop needs a certain amount of water over its life. We compare that with the rain we expect plus any water already in the soil and any irrigation you have. The gap is what you would have to supply.",
+    "translations": {
+      "ml": {
+        "title": "ആവശ്യമായ വെള്ളവും ലഭ്യമായ വെള്ളവും",
+        "body": "ഓരോ വിളയ്ക്കും വളർച്ചാകാലത്ത് ഒരു നിശ്ചിത അളവ് വെള്ളം ആവശ്യമാണ്. പ്രതീക്ഷിക്കുന്ന മഴ, മണ്ണിലുള്ള വെള്ളം, ലഭ്യമായ ജലസേചനം എന്നിവയുമായി ഞങ്ങൾ അത് താരതമ്യം ചെയ്യുന്നു. ശേഷിക്കുന്ന കുറവാണ് നിങ്ങൾ നൽകേണ്ട വെള്ളത്തിന്റെ കണക്ക്."
+      }
+    }
   },
   "normals": {
     "title": "What is normal",
-    "body": "Normal means the typical value for a given week over about twenty years. We use it as a yardstick. A year can be far from normal and still happen again."
+    "body": "Normal means the typical value for a given week over about twenty years. We use it as a yardstick. A year can be far from normal and still happen again.",
+    "translations": {
+      "ml": {
+        "title": "സാധാരണ നില എന്നത്",
+        "body": "ഏകദേശം ഇരുപത് വർഷത്തെ കണക്കിൽ ഒരു പ്രത്യേക ആഴ്ചയിൽ സാധാരണ കാണുന്ന മൂല്യമാണ് ഇവിടെ 'സാധാരണ നില'. താരതമ്യത്തിനുള്ള മാനദണ്ഡമായി ഇത് ഉപയോഗിക്കുന്നു. സാധാരണയിൽ നിന്ന് വ്യത്യസ്തമായ ഒരു വർഷവും വീണ്ടും സംഭവിക്കാം."
+      }
+    }
   },
   "confidence": {
     "title": "How sure are we",
-    "body": "High means local data agrees with satellite data. Medium means satellite data only. Low means a rough estimate. Confidence is lowest when soil or rainfall information is missing."
+    "body": "High means local data agrees with satellite data. Medium means satellite data only. Low means a rough estimate. Confidence is lowest when soil or rainfall information is missing.",
+    "translations": {
+      "ml": {
+        "title": "ഈ കണക്കിൽ എത്രത്തോളം ഉറപ്പുണ്ട്",
+        "body": "പ്രാദേശിക വിവരങ്ങളും സാറ്റലൈറ്റ് വിവരങ്ങളും ഒത്തുപോകുമ്പോൾ ഉറപ്പ് ഉയർന്നതാണ്. സാറ്റലൈറ്റ് വിവരം മാത്രമുള്ളപ്പോൾ ഇടത്തരം ഉറപ്പാണ്. ഏകദേശ കണക്കാണെങ്കിൽ ഉറപ്പ് കുറവായിരിക്കും. മണ്ണിന്റെയോ മഴയുടെയോ വിവരം ലഭ്യമല്ലെങ്കിൽ ഉറപ്പ് ഏറ്റവും കുറവായിരിക്കും."
+      }
+    }
   },
   "estimates_not_guarantees": {
     "title": "Estimates, not guarantees",
-    "body": "These results are estimates from satellite and public data. They do not replace your own judgment or local advice. Please check the items marked for local review before you decide."
+    "body": "These results are estimates from satellite and public data. They do not replace your own judgment or local advice. Please check the items marked for local review before you decide.",
+    "translations": {
+      "ml": {
+        "title": "ഇവ ഏകദേശ കണക്കുകളാണ്, ഉറപ്പുകളല്ല",
+        "body": "സാറ്റലൈറ്റ്, പൊതുവായി ലഭ്യമായ വിവരങ്ങൾ എന്നിവയെ അടിസ്ഥാനമാക്കിയുള്ള ഏകദേശ കണക്കുകളാണ് ഇവ. നിങ്ങളുടെ സ്വന്തം വിലയിരുത്തലിനോ പ്രാദേശിക ഉപദേശത്തിനോ പകരമല്ല. തീരുമാനമെടുക്കുന്നതിന് മുമ്പ് പ്രാദേശിക പരിശോധനയ്ക്ക് അടയാളപ്പെടുത്തിയ കാര്യങ്ങൾ പരിശോധിക്കുക."
+      }
+    }
   },
   "rotation": {
     "title": "Crop rotation",

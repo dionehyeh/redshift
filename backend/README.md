@@ -26,6 +26,7 @@ backend/
 │   ├── crops.csv               # 8 starter agronomic crops catalog
 │   ├── seasons.json            # Kerala planting season windows
 │   ├── explainers.json         # Plain-language science cards
+│   ├── outlooks.json           # Current, region-specific IMD outlook bulletins
 │   ├── todo_messages.json      # Fixed "what to do" recommendation lines
 │   ├── sources.json            # Earth observation sources metadata
 │   ├── fixtures/               # Seed parquet files for offline demo
@@ -71,6 +72,11 @@ generating synthetic observations.
 
 `DEMO_MODE` controls the health endpoint's demo-source status and defaults to `false`.
 Accepted values are `1`/`true`/`yes`/`on` and `0`/`false`/`no`/`off`.
+
+The public seasonal outlook endpoint only serves a region's forecast while its
+configured validity dates include the current date. Add or refresh records in
+`data/outlooks.json` only from a reviewed IMD bulletin; without a current record
+the endpoint returns `503 OUTLOOK_UNAVAILABLE` rather than presenting stale data.
 
 Pre-fetch a NASA POWER cell's historical data and normals before a demo or analysis:
 ```bash
