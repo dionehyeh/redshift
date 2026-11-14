@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Any
 
@@ -11,6 +12,7 @@ from app.config import settings
 from app.db import get_db
 from app.errors import AppError
 from app.security import ClerkConfigurationError, decode_clerk_token
+from app.services.report_service import report_is_active
 
 logger = logging.getLogger(__name__)
 VALID_ROLES = {"farmer", "mentor", "officer", "admin"}
@@ -243,3 +245,76 @@ def own_field(field_id: int, user: dict = Depends(require_role("farmer"))):
         if not row or row["farmer_id"] != user["id"]:
             raise AppError("NOT_FOUND", "Field not found", status=404)
         return dict(row)
+
+
+def own_season(id: int, user: dict = Depends(require_role("farmer"))):
+    with get_db() as conn:
+        row = conn.execute(
+            """SELECT s.* FROM seasons s
+               JOIN fields f ON f.id = s.field_id
+               WHERE s.id = ? AND f.farmer_id = ?""",
+            (id, user["id"]),
+        ).fetchone()
+    if not row:
+        raise AppError("NOT_FOUND", "Season not found", status=404)
+    return dict(row)
+
+
+def own_plan(id: int, user: dict = Depends(require_role("farmer"))):
+    with get_db() as conn:
+        row = conn.execute(
+            """SELECT p.* FROM plans p
+               JOIN fields f ON f.id = p.field_id
+               WHERE p.id = ? AND f.farmer_id = ?""",
+            (id, user["id"]),
+        ).fetchone()
+    if not row:
+        raise AppError("NOT_FOUND", "Plan not found", status=404)
+    return dict(row)
+
+
+def reviewable_finding(id: int, user: dict = Depends(current_user)):
+    if user["role"] not in {"farmer", "mentor", "officer"}:
+        raise AppError("FORBIDDEN", "Access restricted to farmers and shared helpers", status=403)
+
+    with get_db() as conn:
+        row = conn.execute(
+            """SELECT fi.*, s.field_id, f.farmer_id
+               FROM findings fi
+               JOIN seasons s ON s.id = fi.season_id
+               JOIN fields f ON f.id = s.field_id
+               WHERE fi.id = ?""",
+            (id,),
+        ).fetchone()
+        if not row:
+            raise AppError("NOT_FOUND", "Finding not found", status=404)
+
+        if user["role"] == "farmer":
+            if row["farmer_id"] != user["id"]:
+                raise AppError("NOT_FOUND", "Finding not found", status=404)
+            return dict(row)
+
+        reports = conn.execute(
+            """SELECT r.fields_shared, r.expires_at, r.revoked_at, r.status
+               FROM reports r
+               JOIN plans p ON p.id = r.plan_id
+               JOIN fields f ON f.id = p.field_id
+               WHERE r.shared_with = ? AND p.field_id = ?
+                 AND r.created_by = f.farmer_id""",
+            (user["id"], row["field_id"]),
+        ).fetchall()
+    for report in reports:
+        if not report_is_active(report):
+            continue
+        try:
+            shared_fields = json.loads(report["fields_shared"])
+        except (TypeError, json.JSONDecodeError) as exc:
+            logger.exception("Invalid consent fields stored for a report")
+            raise AppError(
+                "REPORT_INVALID",
+                "Stored report consent is invalid",
+                status=500,
+            ) from exc
+        if isinstance(shared_fields, list) and "findings" in shared_fields:
+            return dict(row)
+    raise AppError("NOT_FOUND", "Finding not found", status=404)

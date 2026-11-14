@@ -75,6 +75,10 @@ unauthenticated requests, invalid preference values, and profile provisioning fa
 | 17 | `GET` | `/seasons/{id}/analysis` | Farmer | Get diagnosed findings, stress flags, gaps, and questions |
 | 18 | `POST` | `/findings/{id}/review` | Farmer/Mentor | Confirm, correct, or reject a diagnosed finding |
 
+Season and plan IDs are scoped to the owning farmer; inaccessible records return
+`NOT_FOUND`. A mentor or officer may review a finding only while an active report
+shared with that helper includes the `findings` consent category.
+
 Season analysis reports the actual climatology period, data gaps, and likely causes
 from the completed analysis job. If an analysis is not complete, the response does
 not invent findings or observations. Findings include a value unit when applicable;
@@ -99,6 +103,10 @@ Unavailable source data is reported as a gap and completes the job as
 | 26 | `POST` | `/reports/{id}/revoke` | Farmer | Immediately revoke mentor access to report snapshot |
 | 27 | `GET` | `/mentor/inbox` | Mentor/Officer | List shared consultation reports pending review |
 | 28 | `GET` | `/helpers` | Farmer | List available student mentors, volunteers, and officers |
+
+Report access is limited to its creating farmer or designated helper while the
+report is unexpired and not revoked. Comments and inbox entries follow the same
+active-share requirement.
 
 ### Reference Data & Explainers
 | # | Method | Path | Auth | Description |

@@ -1,16 +1,17 @@
 import json
+
 from fastapi import APIRouter, Depends
+
+from app.db import get_db
+from app.deps import own_field, own_plan, require_role
+from app.errors import AppError
 from app.schemas.plans import (
+    PlanChooseRequest,
     PlanCreateRequest,
     RescoreRequest,
-    PlanChooseRequest,
-    PlanResponse,
     RescoreResponse,
 )
-from app.deps import current_user, require_role, own_field
-from app.db import get_db
 from app.services.plan_service import create_plan_service, rescore_plan_service
-from app.errors import AppError
 
 router = APIRouter(tags=["Crop Plans & Simulation"])
 
@@ -24,11 +25,9 @@ def create_plan(field_id: int, body: PlanCreateRequest, user: dict = Depends(req
     return create_plan_service(field_id, body.model_dump())
 
 @router.get("/plans/{id}")
-def get_plan(id: int, user: dict = Depends(require_role("farmer"))):
+def get_plan(id: int, user: dict = Depends(require_role("farmer")), plan: dict = Depends(own_plan)):
     with get_db() as conn:
-        plan_row = conn.execute("SELECT * FROM plans WHERE id = ?", (id,)).fetchone()
-        if not plan_row:
-            raise AppError("NOT_FOUND", "Plan not found", status=404)
+        plan_row = plan
         
         cards_rows = conn.execute("SELECT * FROM plan_cards WHERE plan_id = ? ORDER BY position ASC", (id,)).fetchall()
         cards = []
@@ -60,16 +59,22 @@ def get_plan(id: int, user: dict = Depends(require_role("farmer"))):
         }
 
 @router.post("/plans/{id}/rescore", response_model=RescoreResponse)
-def rescore_plan(id: int, body: RescoreRequest, user: dict = Depends(require_role("farmer"))):
+def rescore_plan(
+    id: int,
+    body: RescoreRequest,
+    user: dict = Depends(require_role("farmer")),
+    plan: dict = Depends(own_plan),
+):
     return rescore_plan_service(id, body.scenario.model_dump(), body.toggle)
 
 @router.post("/plans/{id}/choose")
-def choose_card(id: int, body: PlanChooseRequest, user: dict = Depends(require_role("farmer"))):
+def choose_card(
+    id: int,
+    body: PlanChooseRequest,
+    user: dict = Depends(require_role("farmer")),
+    plan: dict = Depends(own_plan),
+):
     with get_db() as conn:
-        plan = conn.execute("SELECT * FROM plans WHERE id = ?", (id,)).fetchone()
-        if not plan:
-            raise AppError("NOT_FOUND", "Plan not found", status=404)
-        
         card = conn.execute("SELECT * FROM plan_cards WHERE plan_id = ? AND position = ?", (id, body.card_id)).fetchone()
         if not card:
             raise AppError("NOT_FOUND", "Plan card not found", status=404)
