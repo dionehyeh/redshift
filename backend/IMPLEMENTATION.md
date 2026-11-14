@@ -60,3 +60,9 @@ app/routers/system.py     <-> app/schemas/system.py     (Endpoints 36–37)
   - Execute the authenticated end-to-end flow: Clerk session -> create field -> analyze season -> generate plan -> rescore -> choose card -> share report.
 - **Authentication & Error Tests (`tests/test_auth.py`, `tests/test_errors.py`):**
   - Require a Clerk bearer session for profile access, verify profile provisioning trusts only Clerk `public_metadata`, validate preferences, and preserve the common error envelope without exposing submitted values or internal exception messages.
+- **Field API Tests (`tests/test_fields.py`):**
+  - Cover all field routes, request validation, profile-readiness behavior, and field ownership.
+  - Assert timeline values are padded/truncated to 52 weeks and maps do not invent a boundary when none was supplied.
+
+The field router must delegate persistence to `app/services/field_service.py`. Climate timelines use available weekly observations and normals; never synthesize missing observed-history or NDVI values.
+Changing field coordinates invalidates the previous derived profile and queues a fresh onboarding job. Farmers can submit manual soil corrections after that rebuild completes.

@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, MapPin } from "lucide-react";
+import { api } from "@/lib/api";
+import type { FieldCreateResponse } from "@/lib/field-types";
 
 export default function NewFieldPage() {
   const router = useRouter();
@@ -22,27 +24,20 @@ export default function NewFieldPage() {
     setError("");
 
     try {
-      const res = await fetch("/api/fields", {
+      const data = await api<FieldCreateResponse>("/fields", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name,
           lat: Number(lat),
           lon: Number(lon),
-          area_ha: Number(areaHa),
+          area_ha: areaHa.trim() ? Number(areaHa) : null,
           water_source: waterSource,
           water_quality: waterQuality,
         }),
       });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data?.error?.message || "Failed to create field");
-      }
-
-      router.push(`/fields/${data.field_id}`);
-    } catch (err: any) {
-      setError(err.message || "Failed to create field");
+      router.push(`/fields/${data.field_id}?job_id=${encodeURIComponent(data.job_id)}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create field");
     } finally {
       setLoading(false);
     }
@@ -84,6 +79,8 @@ export default function NewFieldPage() {
             <input
               type="number"
               step="0.0001"
+              min="-90"
+              max="90"
               required
               value={lat}
               onChange={(e) => setLat(Number(e.target.value))}
@@ -95,6 +92,8 @@ export default function NewFieldPage() {
             <input
               type="number"
               step="0.0001"
+              min="-180"
+              max="180"
               required
               value={lon}
               onChange={(e) => setLon(Number(e.target.value))}
@@ -104,9 +103,10 @@ export default function NewFieldPage() {
         </div>
 
         <div className="space-y-1">
-          <label className="text-sm font-medium text-slate-700">Area (Hectares)</label>
+          <label className="text-sm font-medium text-slate-700">Area (Hectares, optional)</label>
           <input
             type="number"
+            min="0.01"
             step="0.1"
             value={areaHa}
             onChange={(e) => setAreaHa(e.target.value)}

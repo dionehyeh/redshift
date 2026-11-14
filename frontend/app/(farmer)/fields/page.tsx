@@ -8,12 +8,12 @@ import {
   Compass,
 } from "lucide-react";
 import { serverApi } from "@/lib/server-api";
-import type { FieldItem } from "@/lib/types";
+import type { FieldListItem, FieldListResponse } from "@/lib/field-types";
 import { formatHectares } from "@/lib/format";
 import { RiskBadge } from "@/components/risk/RiskBadge";
 import { ErrorBanner } from "@/components/common/ErrorBanner";
 
-function getStatusBadgeConfig(status: FieldItem["profile_status"]) {
+function getStatusBadgeConfig(status: FieldListItem["profile_status"]) {
   switch (status) {
     case "ready":
       return { level: "green" as const, label: "Profile Ready" };
@@ -40,11 +40,11 @@ function formatWaterSource(source: string): string {
 }
 
 export default async function FieldsPage() {
-  let fields: FieldItem[] = [];
+  let fields: FieldListItem[] = [];
   let fetchError: { code: string; message: string } | null = null;
 
   try {
-    const data = await serverApi<{ items: FieldItem[] }>("/fields");
+    const data = await serverApi<FieldListResponse>("/fields");
     fields = data.items || [];
   } catch (err) {
     fetchError = {
@@ -157,11 +157,6 @@ export default async function FieldsPage() {
                       </span>
                     )}
 
-                    {field.water_quality && field.water_quality !== "unknown" && (
-                      <span className="inline-flex items-center px-3 py-1.5 rounded-lg bg-slate-100 font-medium capitalize">
-                        {field.water_quality} water
-                      </span>
-                    )}
                   </div>
                 </div>
 
