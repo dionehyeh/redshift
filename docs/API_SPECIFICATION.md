@@ -120,7 +120,12 @@ the season for the next occurrence of its ISO start week.
 
 Report access is limited to its creating farmer or designated helper while the
 report is unexpired and not revoked. Comments and inbox entries follow the same
-active-share requirement.
+active-share requirement. A report snapshot contains only selected sections:
+field terrain/soil attributes (`field_profile`), completed-season crop/outcome
+history (`history`), plan strategy cards (`cards`), and scrubbed stress findings
+(`findings`). Unselected sections are neither queried for the snapshot nor
+included in the stored consent record. Findings omit internal field/season IDs,
+and history omits financial details.
 
 ### Reference Data & Explainers
 | # | Method | Path | Auth | Description |
