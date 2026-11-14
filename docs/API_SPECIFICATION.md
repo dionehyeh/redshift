@@ -59,9 +59,9 @@ unauthenticated requests, invalid preference values, and profile provisioning fa
 | 5 | `POST` | `/fields` | Farmer | Create new field; returns 202 with `job_id` |
 | 6 | `GET` | `/fields` | Farmer | List all owned fields with profile readiness status |
 | 7 | `GET` | `/fields/{id}` | Farmer | Get full field profile with data sources and confidence |
-| 8 | `PATCH` | `/fields/{id}` | Farmer | Edit field parameters or provide manual soil corrections |
+| 8 | `PATCH` | `/fields/{id}` | Farmer | Edit field parameters or provide manual soil corrections; coordinate changes queue profile rebuilding (202) |
 | 9 | `GET` | `/fields/{id}/feasible-crops` | Farmer | Feasible crop list (Suitable, Marginal, Not Suitable) |
-| 10 | `GET` | `/fields/{id}/timeline` | Farmer | 52-week historical & normal series (rain, temp, NDVI) |
+| 10 | `GET` | `/fields/{id}/timeline` | Farmer | 52-week climate series and normals (rain, temperature, and NDVI when available) |
 | 11 | `GET` | `/fields/{id}/map` | Farmer | GeoJSON polygon/point with elevation & flood layers |
 | 12 | `GET` | `/fields/{id}/history` | Farmer | Historical seasons list with outcomes & verified causes |
 
@@ -109,3 +109,5 @@ unauthenticated requests, invalid preference values, and profile provisioning fa
 |---|---|---|---|---|
 | 36 | `GET` | `/jobs/{id}` | Owner | Poll status, step, and progress of background task |
 | 37 | `GET` | `/health` | Public | System status, external data connectivity & DEMO_MODE |
+
+When weekly observations are unavailable, the field timeline returns climatological estimates instead. Metrics absent from the climate cache, including NDVI, are omitted rather than fabricated.
