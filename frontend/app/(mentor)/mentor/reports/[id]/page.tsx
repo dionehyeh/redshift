@@ -2,30 +2,48 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Send, ShieldCheck, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Send, ShieldCheck } from "lucide-react";
 import { api } from "@/lib/api";
+import type { ConsultationReport } from "@/lib/types";
 
 export default function MentorReportDetailPage({ params }: { params: { id: string } }) {
   const reportId = params.id;
-  const [report, setReport] = useState<any>(null);
+  const [report, setReport] = useState<ConsultationReport | null>(null);
   const [commentText, setCommentText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [msg, setMsg] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
-    api<any>(`/reports/${reportId}`)
+    let active = true;
+    api<ConsultationReport>(`/reports/${reportId}`)
       .then((data) => {
-        setReport(data);
-        setLoading(false);
+        if (active) setReport(data);
       })
-      .catch(() => setLoading(false));
+      .catch((requestError: unknown) => {
+        if (active) {
+          setError(
+            requestError instanceof Error
+              ? requestError.message
+              : "Unable to load this consultation report."
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
   }, [reportId]);
 
   async function handleAddComment(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
-    setMsg("");
+    setError("");
+    setNotice("");
 
     try {
       await api(`/reports/${reportId}/comments`, {
@@ -33,11 +51,15 @@ export default function MentorReportDetailPage({ params }: { params: { id: strin
         body: JSON.stringify({ text: commentText }),
       });
       setCommentText("");
-      setMsg("Advisory comment posted successfully.");
-      const updated = await api<any>(`/reports/${reportId}`);
+      setNotice("Advisory comment posted successfully.");
+      const updated = await api<ConsultationReport>(`/reports/${reportId}`);
       setReport(updated);
-    } catch (err: any) {
-      setMsg("Failed to post comment.");
+    } catch (requestError: unknown) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Failed to post the advisory comment."
+      );
     } finally {
       setSubmitting(false);
     }
@@ -48,6 +70,14 @@ export default function MentorReportDetailPage({ params }: { params: { id: strin
       <div className="p-16 text-center space-y-4">
         <div className="w-10 h-10 border-4 border-stone-200 border-t-amber-700 rounded-full animate-spin mx-auto" />
         <p className="text-stone-600 font-semibold text-sm">Loading scrubbed consultation snapshot...</p>
+      </div>
+    );
+  }
+
+  if (!report) {
+    return (
+      <div role="alert" className="mx-auto max-w-2xl rounded-2xl border-2 border-red-200 bg-red-50 p-6 text-sm text-red-800">
+        {error || "This consultation report is unavailable."}
       </div>
     );
   }
@@ -72,28 +102,50 @@ export default function MentorReportDetailPage({ params }: { params: { id: strin
           Consultation Report #{reportId}
         </h1>
         <p className="text-stone-600 text-sm">
-          Submitted by: <strong className="text-stone-800 font-bold">{report?.farmer_name || "Kerala Demo Farmer"}</strong>
+          Shared sections: <strong className="text-stone-800 font-bold">{report.shared_fields.join(", ")}</strong>
         </p>
       </div>
 
-      {msg && (
-        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-sm font-semibold">
-          {msg}
+      {(error || notice) && (
+        <div
+          role={error ? "alert" : "status"}
+          className={`p-4 rounded-2xl border text-sm font-semibold ${
+            error
+              ? "bg-red-50 border-red-300 text-red-900"
+              : "bg-emerald-50 border-emerald-300 text-emerald-900"
+          }`}
+        >
+          {error || notice}
         </div>
       )}
 
-      {/* Advisory Feedback Section */}
+      <div className="p-8 bg-white border-2 border-stone-200 rounded-3xl shadow-sm space-y-6">
+        <div className="space-y-2">
+          <h2 className="text-xl font-extrabold text-stone-900">Consent snapshot</h2>
+          <p className="text-xs text-stone-500">
+            Access expires {new Date(report.expires_at).toLocaleString()}.
+          </p>
+        </div>
+        {Object.entries(report.snapshot).map(([section, value]) => (
+          <section key={section} className="space-y-2">
+            <h3 className="font-bold capitalize text-stone-800">{section.replaceAll("_", " ")}</h3>
+            <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-xl bg-stone-50 p-4 text-xs text-stone-700">
+              {JSON.stringify(value, null, 2)}
+            </pre>
+          </section>
+        ))}
+      </div>
+
       <div className="p-8 bg-white border-2 border-stone-200 rounded-3xl shadow-sm space-y-6">
         <h2 className="text-xl font-extrabold text-stone-900">Advisor Notes & Extension Recommendations</h2>
-
         <div className="space-y-3">
-          {report?.comments?.length === 0 ? (
+          {report.comments.length === 0 ? (
             <p className="text-stone-500 text-sm italic">No extension notes added yet.</p>
           ) : (
-            report?.comments?.map((c: any) => (
-              <div key={c.id} className="p-5 bg-stone-50 border border-stone-200 rounded-2xl space-y-1">
-                <span className="text-xs font-bold text-amber-900 block">{c.author || "Extension Mentor"}</span>
-                <p className="text-sm text-stone-800 font-medium">{c.text}</p>
+            report.comments.map((comment) => (
+              <div key={comment.id} className="p-5 bg-stone-50 border border-stone-200 rounded-2xl space-y-1">
+                <span className="text-xs font-bold text-amber-900 block">{comment.author_label}</span>
+                <p className="text-sm text-stone-800 font-medium">{comment.body}</p>
               </div>
             ))
           )}
@@ -111,7 +163,7 @@ export default function MentorReportDetailPage({ params }: { params: { id: strin
           />
           <button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || commentText.trim().length < 2}
             className="px-6 py-3 rounded-xl bg-gradient-to-r from-amber-700 to-yellow-800 text-white font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-60"
           >
             <Send className="w-4 h-4" />

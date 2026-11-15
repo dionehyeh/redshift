@@ -332,28 +332,78 @@ export function getMockResponse<T>(path: string): T | null {
     } as unknown as T;
   }
 
-  if (cleanPath.includes("/inbox")) {
+  if (cleanPath === "/mentor/inbox") {
     return {
       items: [
         {
-          id: 1,
+          report_id: 1,
           farmer_name: "Kerala Demo Farmer",
-          field_name: "Kuttanad Demonstration Plot",
-          report_type: "Crop Rotation Strategy",
           created_at: "2026-11-14T08:00:00Z",
-          status: "pending_review",
+          status: "sent",
+          expires_at: "2026-11-28T08:00:00Z",
         },
       ],
     } as unknown as T;
   }
 
-  if (cleanPath.includes("/reports")) {
+  if (cleanPath.startsWith("/helpers")) {
+    const helperType = new URLSearchParams(cleanPath.split("?")[1] ?? "").get("type");
+    const helpers = [
+      { id: 2, name: "Anjali Menon", role: "mentor", helper_type: "student", label: "Anjali Menon (student)" },
+      { id: 3, name: "Dr. Radhakrishnan", role: "officer", helper_type: "officer", label: "Dr. Radhakrishnan (officer)" },
+    ];
+    return {
+      items: helperType
+        ? helpers.filter((helper) => helper.helper_type === helperType)
+        : helpers,
+    } as unknown as T;
+  }
+
+  if (/^\/reports\/\d+$/.test(cleanPath)) {
     return {
       id: 1,
-      title: "Kuttanad Plot Season Report",
-      farmer_name: "Kerala Demo Farmer",
+      status: "sent",
+      share_token: "mock-share-token",
+      shared_fields: ["cards", "findings"],
+      snapshot: {
+        cards: [{ position: 1, crop: "paddy", verdict: "Feasible", total: 82 }],
+        findings: [],
+      },
+      expires_at: "2026-11-28T08:00:00Z",
+      revoked_at: null,
       comments: [
-        { id: 1, author: "Extension Officer (Krishi Bhavan)", text: "Soil tests confirm acidic pH 5.4. Apply agricultural dolomite before seed sowing." },
+        { id: 1, author_label: "Agricultural Extension Officer", body: "Consider soil test results before applying amendments.", created_at: "2026-11-14T08:00:00Z" },
+      ],
+      created_at: "2026-11-14T08:00:00Z",
+    } as unknown as T;
+  }
+
+  if (cleanPath === "/crops") {
+    return {
+      items: [
+        { id: "paddy", name: { en: "Paddy", ml: "" }, family: "grass", duration_days: 130, water_need: "high", market: "high" },
+        { id: "green_gram", name: { en: "Green Gram", ml: "" }, family: "legume", duration_days: 70, water_need: "low", market: "medium" },
+        { id: "cowpea", name: { en: "Cowpea", ml: "" }, family: "legume", duration_days: 75, water_need: "low", market: "medium" },
+        { id: "sesame", name: { en: "Sesame", ml: "" }, family: "oilseed", duration_days: 90, water_need: "low", market: "medium" },
+      ],
+    } as unknown as T;
+  }
+
+  if (cleanPath === "/reference/seasons") {
+    return {
+      seasons: [
+        { key: "virippu", name: { en: "Virippu (Autumn)", ml: "വിരിപ്പ്" }, start_week: 18, end_week: 38, description: "Southwest monsoon crop cycle" },
+        { key: "mundakan", name: { en: "Mundakan (Winter)", ml: "മുണ്ടകൻ" }, start_week: 38, end_week: 3, description: "Northeast monsoon crop cycle" },
+        { key: "puncha", name: { en: "Puncha (Summer)", ml: "പുഞ്ച" }, start_week: 2, end_week: 16, description: "Summer / residual moisture crop cycle" },
+      ],
+    } as unknown as T;
+  }
+
+  if (cleanPath === "/sources") {
+    return {
+      items: [
+        { name: "NASA POWER", used_for: "Temperature and climatological normals", resolution: "~50 km", latency: "Near Real-Time", limits: "Coarse spatial resolution." },
+        { name: "GPM IMERG", used_for: "Precipitation estimates and dry spells", resolution: "~10 km", latency: "Final run ~3.5 months", limits: "May miss localized rainfall." },
       ],
     } as unknown as T;
   }

@@ -32,6 +32,7 @@ class FakeConnection:
         finding_reports=None,
         report=None,
         report_owner=None,
+        helpers=None,
     ):
         self.plan = plan
         self.season = season
@@ -43,6 +44,7 @@ class FakeConnection:
             else None
         )
         self.report_owner = report_owner
+        self.helpers = helpers or []
         self.statements = []
 
     def execute(self, query, params=()):
@@ -61,6 +63,8 @@ class FakeConnection:
             return FakeCursor(rows=self.finding_reports)
         if "SELECT r.id as report_id" in query:
             return FakeCursor(rows=[])
+        if "FROM users" in query and "helper_type" in query:
+            return FakeCursor(rows=self.helpers)
         if "INSERT INTO report_comments" in query:
             return FakeCursor({"id": 21})
         return FakeCursor()
@@ -216,10 +220,63 @@ def test_mentor_inbox_query_excludes_revoked_and_expired_reports(monkeypatch):
         for query, params in connection.statements
         if "SELECT r.id as report_id" in query
     )
-    assert "r.status <> 'revoked'" in inbox_query
+    assert "r.status IN ('sent', 'viewed')" in inbox_query
     assert "r.revoked_at IS NULL" in inbox_query
     assert "r.expires_at > ?" in inbox_query
     assert params[0] == MENTOR["id"]
+
+
+def test_helpers_endpoint_requires_farmer_role(monkeypatch):
+    client = create_client(monkeypatch, MENTOR, FakeConnection())
+
+    response = client.get("/api/v1/helpers")
+
+    assert response.status_code == 403
+
+
+@pytest.mark.parametrize(
+    ("helper_type", "expected_sql", "expected_params"),
+    [
+        ("student", "COALESCE(helper_type, 'student') = ?", ("student",)),
+        ("volunteer", "COALESCE(helper_type, 'student') = ?", ("volunteer",)),
+        ("college", "COALESCE(helper_type, 'student') = ?", ("college",)),
+        ("officer", "(role = 'officer' OR helper_type = ?)", ("officer",)),
+    ],
+)
+def test_helpers_endpoint_applies_requested_type_filter(
+    monkeypatch, helper_type, expected_sql, expected_params
+):
+    connection = FakeConnection(
+        helpers=[
+            {
+                "id": 11,
+                "name": "Helper",
+                "role": "mentor",
+                "helper_type": helper_type,
+            }
+        ]
+    )
+    client = create_client(monkeypatch, FARMER, connection)
+
+    response = client.get(f"/api/v1/helpers?type={helper_type}")
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["helper_type"] == helper_type
+    query, params = next(
+        (query, params)
+        for query, params in connection.statements
+        if "FROM users" in query and "helper_type" in query
+    )
+    assert expected_sql in query
+    assert params == expected_params
+
+
+def test_helpers_endpoint_rejects_unknown_type_filter(monkeypatch):
+    client = create_client(monkeypatch, FARMER, FakeConnection())
+
+    response = client.get("/api/v1/helpers?type=unknown")
+
+    assert response.status_code == 422
 
 
 def test_farmer_cannot_revoke_another_farmers_report(monkeypatch):

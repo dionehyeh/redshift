@@ -132,3 +132,65 @@ export interface UserPrefsUpdate {
   market_toggle?: "earn_more" | "play_safe" | null;
   default_share_consent?: 0 | 1 | null;
 }
+
+export type HelperType = "student" | "volunteer" | "college" | "officer";
+
+export interface Helper {
+  id: number;
+  name: string;
+  role: "mentor" | "officer";
+  helper_type: HelperType;
+  label: string;
+}
+
+export interface ConsultationComment {
+  id: number;
+  author_label: string;
+  body: string;
+  created_at: string;
+}
+
+export interface ConsultationReport {
+  id: number;
+  status: "sent" | "viewed" | "commented" | "revoked";
+  share_token: string;
+  shared_fields: string[];
+  snapshot: Record<string, unknown>;
+  expires_at: string;
+  revoked_at: string | null;
+  comments: ConsultationComment[];
+  created_at: string;
+}
+
+export interface MentorInboxItem {
+  report_id: number;
+  farmer_name: string;
+  created_at: string;
+  status: "sent" | "viewed";
+  expires_at: string;
+}
+
+export interface CropCatalogItem {
+  id: string;
+  name: { en: string; ml: string };
+  family: string;
+  duration_days: number;
+  water_need: string;
+  market: string;
+}
+
+export interface SeasonWindow {
+  key: string;
+  name: { en: string; ml: string };
+  start_week: number;
+  end_week: number;
+  description?: string | null;
+}
+
+export interface DataSource {
+  name: string;
+  used_for: string;
+  resolution: string;
+  latency: string;
+  limits: string;
+}

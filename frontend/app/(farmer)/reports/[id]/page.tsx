@@ -4,29 +4,55 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ShieldCheck, MessageSquare } from "lucide-react";
 import { api } from "@/lib/api";
+import type { ConsultationReport } from "@/lib/types";
 
 export default function FarmerReportStatusPage({ params }: { params: { id: string } }) {
   const reportId = params.id;
-  const [report, setReport] = useState<any>(null);
+  const [report, setReport] = useState<ConsultationReport | null>(null);
   const [loading, setLoading] = useState(true);
-  const [revoked, setRevoked] = useState(false);
+  const [revoking, setRevoking] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    api<any>(`/reports/${reportId}`)
+    let active = true;
+    api<ConsultationReport>(`/reports/${reportId}`)
       .then((data) => {
-        setReport(data);
-        setRevoked(Boolean(data.revoked_at));
-        setLoading(false);
+        if (active) setReport(data);
       })
-      .catch(() => setLoading(false));
+      .catch((requestError: unknown) => {
+        if (active) {
+          setError(
+            requestError instanceof Error
+              ? requestError.message
+              : "Unable to load the consultation report."
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
   }, [reportId]);
 
   async function handleRevoke() {
+    setRevoking(true);
+    setError("");
     try {
       await api(`/reports/${reportId}/revoke`, { method: "POST" });
-      setRevoked(true);
-    } catch {
-      // handle error
+      setReport((current) =>
+        current ? { ...current, status: "revoked", revoked_at: new Date().toISOString() } : current
+      );
+    } catch (requestError: unknown) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to revoke this report."
+      );
+    } finally {
+      setRevoking(false);
     }
   }
 
@@ -38,6 +64,16 @@ export default function FarmerReportStatusPage({ params }: { params: { id: strin
       </div>
     );
   }
+
+  if (!report) {
+    return (
+      <div role="alert" className="mx-auto max-w-2xl rounded-2xl border-2 border-red-200 bg-red-50 p-6 text-sm text-red-800">
+        {error || "This consultation report is unavailable."}
+      </div>
+    );
+  }
+
+  const revoked = Boolean(report.revoked_at);
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -73,27 +109,43 @@ export default function FarmerReportStatusPage({ params }: { params: { id: strin
                 : "bg-emerald-100 text-emerald-800 border border-emerald-300"
             }`}
           >
-            {revoked ? "Access Revoked" : "Active Consultation"}
+            {revoked ? "Access Revoked" : report.status}
           </span>
         </div>
 
         <div className="text-xs text-stone-500 space-y-1 bg-stone-50 p-4 rounded-xl border border-stone-200">
-          <p>Shared Sections: <span className="font-semibold text-stone-700">Crop Rotation, Soil pH, 20-Year Climate Normals</span></p>
-          <p>Consent: <span className="font-semibold text-stone-700">Expiring in 30 days (Auto-purge)</span></p>
+          <p>
+            Shared Sections:{" "}
+            <span className="font-semibold text-stone-700">
+              {report.shared_fields.join(", ")}
+            </span>
+          </p>
+          <p>
+            Expires:{" "}
+            <span className="font-semibold text-stone-700">
+              {new Date(report.expires_at).toLocaleString()}
+            </span>
+          </p>
         </div>
+
+        {error && (
+          <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+            {error}
+          </div>
+        )}
 
         {/* Advisor Comments */}
         <div className="pt-4 border-t border-stone-100 space-y-3">
           <h3 className="text-base font-extrabold text-stone-900 flex items-center gap-2">
             <MessageSquare className="w-4 h-4 text-green-700" /> Extension Officer Feedback
           </h3>
-          {report?.comments?.length === 0 ? (
-            <p className="text-xs text-stone-500 italic">No feedback submitted yet. Your local Krishi Bhavan mentor is reviewing the snapshot.</p>
+          {report.comments.length === 0 ? (
+            <p className="text-xs text-stone-500 italic">The assigned advisor has not submitted feedback yet.</p>
           ) : (
-            report?.comments?.map((c: any) => (
-              <div key={c.id} className="p-5 bg-emerald-50/60 border border-emerald-200 rounded-2xl space-y-1">
-                <span className="text-xs font-bold text-green-950 block">{c.author || "Krishi Bhavan Officer"}</span>
-                <p className="text-sm text-stone-800 font-medium">{c.text || c.body}</p>
+            report.comments.map((comment) => (
+              <div key={comment.id} className="p-5 bg-emerald-50/60 border border-emerald-200 rounded-2xl space-y-1">
+                <span className="text-xs font-bold text-green-950 block">{comment.author_label}</span>
+                <p className="text-sm text-stone-800 font-medium">{comment.body}</p>
               </div>
             ))
           )}
@@ -103,9 +155,10 @@ export default function FarmerReportStatusPage({ params }: { params: { id: strin
           <div className="pt-4 border-t border-stone-100 flex justify-end">
             <button
               onClick={handleRevoke}
+              disabled={revoking}
               className="text-xs font-bold text-red-700 hover:text-red-900 px-4 py-2 rounded-xl bg-red-50 hover:bg-red-100 transition"
             >
-              Stop Sharing / Revoke Access
+              {revoking ? "Revoking…" : "Stop Sharing / Revoke Access"}
             </button>
           </div>
         )}

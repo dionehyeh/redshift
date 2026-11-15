@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Compass, Sparkles, Sprout } from "lucide-react";
 import { api } from "@/lib/api";
+import type { CropCatalogItem, SeasonWindow } from "@/lib/types";
 
 export default function NewPlanPage({ params }: { params: { id: string } }) {
   const router = useRouter();
@@ -16,8 +17,51 @@ export default function NewPlanPage({ params }: { params: { id: string } }) {
   const [crop, setCrop] = useState("green_gram");
   const [reason, setReason] = useState("market");
   const [storedWater, setStoredWater] = useState<string>("moist");
+  const [crops, setCrops] = useState<CropCatalogItem[]>([]);
+  const [seasons, setSeasons] = useState<SeasonWindow[]>([]);
+  const [loadingReference, setLoadingReference] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+
+    Promise.all([
+      api<{ items: CropCatalogItem[] }>("/crops"),
+      api<{ seasons: SeasonWindow[] }>("/reference/seasons"),
+    ])
+      .then(([cropResponse, seasonResponse]) => {
+        if (!active) return;
+        setCrops(cropResponse.items);
+        setSeasons(seasonResponse.seasons);
+        setCrop((currentCrop) =>
+          cropResponse.items.some((item) => item.id === currentCrop)
+            ? currentCrop
+            : (cropResponse.items[0]?.id ?? "")
+        );
+        setSeason((currentSeason) =>
+          seasonResponse.seasons.some((item) => item.key === currentSeason)
+            ? currentSeason
+            : (seasonResponse.seasons[0]?.key ?? "")
+        );
+      })
+      .catch((requestError: unknown) => {
+        if (active) {
+          setError(
+            requestError instanceof Error
+              ? requestError.message
+              : "Could not load crop and season reference data."
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setLoadingReference(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   async function handleCreatePlan(e: React.FormEvent) {
     e.preventDefault();
@@ -25,12 +69,18 @@ export default function NewPlanPage({ params }: { params: { id: string } }) {
     setError("");
 
     try {
-      const data = await api<{ plan_id?: number; id?: number }>(`/fields/${fieldId}/plans`, {
+      const selectedSeason = seasons.find((item) => item.key === season);
+      if (!selectedSeason || (mode === "farmer_led" && !crops.some((item) => item.id === crop))) {
+        setError("Choose a valid season and crop from the reference catalog.");
+        return;
+      }
+
+      const data = await api<{ plan_id: number }>(`/fields/${fieldId}/plans`, {
         method: "POST",
         body: JSON.stringify({
           mode,
           season,
-          start_week: season === "puncha" ? 2 : season === "virippu" ? 18 : 38,
+          start_week: selectedSeason.start_week,
           toggle,
           crop: mode === "farmer_led" ? crop : null,
           reason: mode === "farmer_led" ? reason : null,
@@ -38,10 +88,13 @@ export default function NewPlanPage({ params }: { params: { id: string } }) {
         }),
       });
 
-      const targetPlanId = data.plan_id || data.id || 1;
-      router.push(`/plans/${targetPlanId}`);
-    } catch (err: any) {
-      setError(err.message || "Failed to generate strategy cards");
+      router.push(`/plans/${data.plan_id}`);
+    } catch (requestError: unknown) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Failed to generate strategy cards."
+      );
     } finally {
       setLoading(false);
     }
@@ -122,11 +175,14 @@ export default function NewPlanPage({ params }: { params: { id: string } }) {
           <select
             value={season}
             onChange={(e) => setSeason(e.target.value)}
+            disabled={loadingReference || seasons.length === 0}
             className="w-full h-12 px-4 border-2 border-stone-200 rounded-xl bg-white focus:border-green-600 focus:ring-2 focus:ring-green-600/20 focus:outline-none font-medium text-stone-800 text-sm transition"
           >
-            <option value="puncha">Puncha / Summer Season (Week 2 to 16)</option>
-            <option value="virippu">Virippu / Autumn Monsoon (Week 18 to 38)</option>
-            <option value="mundakan">Mundakan / Winter Season (Week 38 to 3)</option>
+            {seasons.map((item) => (
+              <option key={item.key} value={item.key}>
+                {item.name.en} (Week {item.start_week} to {item.end_week})
+              </option>
+            ))}
           </select>
         </div>
 
@@ -152,14 +208,14 @@ export default function NewPlanPage({ params }: { params: { id: string } }) {
               <select
                 value={crop}
                 onChange={(e) => setCrop(e.target.value)}
+                disabled={loadingReference || crops.length === 0}
                 className="w-full h-12 px-4 border-2 border-stone-200 rounded-xl bg-white focus:border-green-600 focus:ring-2 focus:ring-green-600/20 focus:outline-none font-medium text-stone-800 text-sm transition"
               >
-                <option value="green_gram">Green Gram (Cherupayar)</option>
-                <option value="cowpea">Cowpea (Vanpayar)</option>
-                <option value="sesame">Sesame (Ellu)</option>
-                <option value="groundnut">Groundnut</option>
-                <option value="okra">Okra (Bhindi)</option>
-                <option value="corn">Sweet Corn</option>
+                {crops.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name.en}{item.name.ml ? ` (${item.name.ml})` : ""}
+                  </option>
+                ))}
               </select>
             </div>
             <div className="space-y-1.5">
@@ -179,7 +235,7 @@ export default function NewPlanPage({ params }: { params: { id: string } }) {
 
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || loadingReference || seasons.length === 0 || (mode === "farmer_led" && crops.length === 0)}
           className="w-full h-13 py-3.5 rounded-xl bg-gradient-to-r from-green-700 to-emerald-700 text-white font-bold text-base shadow-md hover:shadow-lg hover:from-green-800 hover:to-emerald-800 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
         >
           <Sparkles className="w-5 h-5 text-emerald-200" />

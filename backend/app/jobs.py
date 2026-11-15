@@ -36,13 +36,30 @@ def fail_job(job_id: str, error_message: str) -> None:
             (error_message, now, job_id),
         )
 
-def get_job_status(job_id: str) -> dict | None:
+def get_owned_job_status(job_id: str, farmer_id: int) -> dict | None:
     with get_db() as conn:
-        row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        row = conn.execute(
+            """SELECT j.* FROM jobs j
+               LEFT JOIN fields onboarding_field
+                 ON j.kind = 'field_onboarding'
+                AND onboarding_field.id = j.target_id
+               LEFT JOIN seasons analysis_season
+                 ON j.kind = 'season_analysis'
+                AND analysis_season.id = j.target_id
+               LEFT JOIN fields analysis_field
+                 ON analysis_field.id = analysis_season.field_id
+               WHERE j.id = ?
+                 AND (
+                     onboarding_field.farmer_id = ?
+                     OR analysis_field.farmer_id = ?
+                 )""",
+            (job_id, farmer_id, farmer_id),
+        ).fetchone()
         if not row:
             return None
-        res = dict(row)
-        res["steps"] = json.loads(res["steps_json"]) if res["steps_json"] else []
-        if res["result_json"]:
-            res["result"] = json.loads(res["result_json"])
-        return res
+
+        result = dict(row)
+        result["steps"] = json.loads(result["steps_json"]) if result["steps_json"] else []
+        if result["result_json"]:
+            result["result"] = json.loads(result["result_json"])
+        return result

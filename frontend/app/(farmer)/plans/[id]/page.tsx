@@ -2,32 +2,41 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, CheckCircle2, AlertTriangle, XCircle, RotateCcw, Check, Sparkles, Sprout } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, CheckCircle2, AlertTriangle, XCircle, RotateCcw, Check, Sprout, Share2 } from "lucide-react";
 import { api } from "@/lib/api";
+import { ShareDialog } from "@/components/report/ShareDialog";
+import type { Plan, PlanCardData, RescoreResponse } from "@/lib/types";
 
 export default function PlanCardsPage({ params }: { params: { id: string } }) {
   const planId = params.id;
-  const [plan, setPlan] = useState<any>(null);
-  const [cards, setCards] = useState<any[]>([]);
+  const router = useRouter();
+  const [plan, setPlan] = useState<Plan | null>(null);
+  const [cards, setCards] = useState<PlanCardData[]>([]);
   const [loading, setLoading] = useState(true);
   const [rescoring, setRescoring] = useState(false);
   const [error, setError] = useState("");
   const [chosenCardId, setChosenCardId] = useState<number | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
 
   // Sliders state
   const [rainSlider, setRainSlider] = useState(1.0);
   const [tempSlider, setTempSlider] = useState(0.0);
 
   useEffect(() => {
-    api<any>(`/plans/${planId}`)
+    api<Plan>(`/plans/${planId}`)
       .then((data) => {
         setPlan(data);
         setCards(data.cards || []);
-        setChosenCardId(data.chosen_card_id ?? 2);
+        setChosenCardId(data.chosen_card_id ?? null);
         setLoading(false);
       })
-      .catch((err) => {
-        setError(err.message);
+      .catch((requestError: unknown) => {
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : "Unable to load this plan."
+        );
         setLoading(false);
       });
   }, [planId]);
@@ -38,17 +47,20 @@ export default function PlanCardsPage({ params }: { params: { id: string } }) {
     const timer = setTimeout(async () => {
       setRescoring(true);
       try {
-        const data = await api<any>(`/plans/${planId}/rescore`, {
+        const data = await api<RescoreResponse>(`/plans/${planId}/rescore`, {
           method: "POST",
           body: JSON.stringify({
             scenario: { rain: Number(rainSlider), temp: Number(tempSlider) },
           }),
         });
-        if (data.cards) {
-          setCards(data.cards);
-        }
-      } catch (err) {
-        // preserve cards
+        setCards(data.cards);
+        setError("");
+      } catch (requestError: unknown) {
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : "Unable to update scenario scores."
+        );
       } finally {
         setRescoring(false);
       }
@@ -64,8 +76,13 @@ export default function PlanCardsPage({ params }: { params: { id: string } }) {
         body: JSON.stringify({ card_id: cardId }),
       });
       setChosenCardId(cardId);
-    } catch (err: any) {
-      setError(err.message);
+      setError("");
+    } catch (requestError: unknown) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Unable to save the selected strategy."
+      );
     }
   }
 
@@ -78,18 +95,33 @@ export default function PlanCardsPage({ params }: { params: { id: string } }) {
     );
   }
 
-  const getVerdictBadge = (verdict: string) => {
-    if (verdict === "Feasible" || verdict === "suitable") {
+  if (!plan) {
+    return (
+      <div role="alert" className="mx-auto max-w-2xl rounded-2xl border-2 border-red-200 bg-red-50 p-6 text-sm text-red-800">
+        {error || "This plan could not be loaded."}
+      </div>
+    );
+  }
+
+  const getVerdictBadge = (verdict: PlanCardData["verdict"]) => {
+    if (verdict === "Feasible") {
       return (
         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
           <CheckCircle2 className="w-3.5 h-3.5" /> Highly Feasible
         </span>
       );
     }
-    if (verdict === "Possible with risk" || verdict === "marginal") {
+    if (verdict === "Possible with risk") {
       return (
         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300">
           <AlertTriangle className="w-3.5 h-3.5" /> Possible with Risk
+        </span>
+      );
+    }
+    if (verdict === "Not assessed") {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-stone-100 text-stone-700 border border-stone-300">
+          Not Assessed
         </span>
       );
     }
@@ -121,15 +153,31 @@ export default function PlanCardsPage({ params }: { params: { id: string } }) {
             Season Rotation Strategies
           </h1>
           <p className="text-sm text-stone-600">
-            5–8 Month Outlook: <strong className="text-green-900 capitalize font-bold">Near Normal (+4% IMD Monsoon Bulletin)</strong>
+            Seasonal outlook: <strong className="text-green-900 font-bold">{plan.outlook.label}</strong>
+            {" "}({plan.outlook.confidence} confidence)
           </p>
         </div>
-        {rescoring && (
-          <span className="text-xs px-3.5 py-1.5 rounded-full bg-emerald-100 text-emerald-800 animate-pulse font-bold border border-emerald-300">
-            Recalculating factor scores...
-          </span>
-        )}
+        <div className="flex items-center gap-3">
+          {rescoring && (
+            <span className="text-xs px-3.5 py-1.5 rounded-full bg-emerald-100 text-emerald-800 animate-pulse font-bold border border-emerald-300">
+              Recalculating factor scores...
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => setShareOpen(true)}
+            className="inline-flex items-center gap-2 rounded-xl bg-emerald-800 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-900"
+          >
+            <Share2 className="h-4 w-4" /> Share with an advisor
+          </button>
+        </div>
       </div>
+
+      {error && (
+        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          {error}
+        </div>
+      )}
 
       {/* Interactive What-If Scenarios Panel */}
       <div className="p-6 bg-white border-2 border-stone-200 rounded-3xl shadow-sm space-y-5">
@@ -190,12 +238,12 @@ export default function PlanCardsPage({ params }: { params: { id: string } }) {
 
       {/* 3 Strategy Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {cards.map((c: any, index: number) => {
-          const isSelected = chosenCardId === (c.id || index + 1);
+        {cards.map((card, index) => {
+          const isSelected = chosenCardId === card.id;
 
           return (
             <div
-              key={c.id || c.crop}
+              key={card.id}
               className={`p-7 bg-white rounded-3xl border-2 shadow-md flex flex-col justify-between space-y-5 transition-all duration-300 ${
                 isSelected
                   ? "border-green-600 ring-4 ring-green-600/15 shadow-xl -translate-y-1"
@@ -205,61 +253,54 @@ export default function PlanCardsPage({ params }: { params: { id: string } }) {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold text-stone-500 uppercase tracking-wider">
-                    {c.card_type === "customary" || index === 0 ? "Card 1: Customary" : `Card ${index + 1}: Alternative`}
+                    {card.is_existing_rotation ? "Existing rotation" : `Strategy ${index + 1}`}
                   </span>
-                  {(c.robustness?.holds_up_best || index === 1) && (
+                  {card.robustness.holds_up_best && (
                     <span className="text-[11px] font-extrabold px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
-                      🛡️ Holds Up Best
+                      Holds up best
                     </span>
                   )}
                 </div>
 
                 <div>
                   <h3 className="text-2xl font-black text-stone-900">
-                    {c.name_ml ? `${c.crop} (${c.name_ml})` : c.crop}
+                    {card.crop.replaceAll("_", " ")}
                   </h3>
-                  <p className="text-xs text-stone-500 mt-1">{c.headline || "Balanced agro-climatic profile"}</p>
                   <div className="mt-3 flex items-center justify-between">
-                    {getVerdictBadge(c.suitability || c.verdict || "suitable")}
+                    {getVerdictBadge(card.verdict)}
                     <span className="text-xs text-stone-600 font-mono font-bold bg-stone-100 px-2.5 py-1 rounded-lg">
-                      Resilience: {c.resilience_score || c.total || 82}/100
+                      Score: {card.total ?? "Not scored"}
                     </span>
                   </div>
+                  <p className="mt-2 text-xs text-stone-500">
+                    {card.confidence.level} confidence · {card.confidence.reason}
+                  </p>
                 </div>
 
-                {/* Metric badges */}
-                <div className="grid grid-cols-3 gap-2 pt-2">
-                  <div className="p-2 rounded-xl bg-stone-50 border border-stone-200 text-center">
-                    <span className="text-[10px] text-stone-500 block font-semibold">Yield Est.</span>
-                    <span className="text-xs font-bold text-stone-800">{c.expected_yield || "4.5 t/ha"}</span>
-                  </div>
-                  <div className="p-2 rounded-xl bg-stone-50 border border-stone-200 text-center">
-                    <span className="text-[10px] text-stone-500 block font-semibold">Water Req.</span>
-                    <span className="text-xs font-bold text-stone-800">{c.water_demand?.split(" ")[0] || "Low"}</span>
-                  </div>
-                  <div className="p-2 rounded-xl bg-stone-50 border border-stone-200 text-center">
-                    <span className="text-[10px] text-stone-500 block font-semibold">Soil Match</span>
-                    <span className="text-xs font-bold text-stone-800">pH 5.4 OK</span>
-                  </div>
+                <div className="space-y-2 border-t border-stone-100 pt-3">
+                  {Object.entries(card.factors).map(([factor, score]) => (
+                    <div key={factor} className="flex items-center justify-between text-xs">
+                      <span className="capitalize text-stone-600">{factor}</span>
+                      <span className="font-semibold text-stone-800">{score}</span>
+                    </div>
+                  ))}
                 </div>
 
-                <div className="text-xs text-stone-700 space-y-2 pt-3 border-t border-stone-100">
-                  {c.key_advantages && (
-                    <p>
-                      <strong className="text-green-800">Advantages:</strong> {c.key_advantages.join("; ")}
-                    </p>
-                  )}
-                  {c.climate_risks && (
-                    <p>
-                      <strong className="text-amber-800">Climate Risks:</strong> {c.climate_risks.join("; ")}
-                    </p>
+                <div className="space-y-2 border-t border-stone-100 pt-3 text-xs text-stone-700">
+                  <p><strong className="text-green-800">Why:</strong> {card.text.why}</p>
+                  <p><strong className="text-amber-800">Risks:</strong> {card.text.risks}</p>
+                  <p><strong>Next step:</strong> {card.text.next_step}</p>
+                  {card.notes.length > 0 && (
+                    <ul className="list-disc space-y-1 pl-4 text-stone-600">
+                      {card.notes.map((note) => <li key={note}>{note}</li>)}
+                    </ul>
                   )}
                 </div>
               </div>
 
               <div className="pt-4 border-t border-stone-100">
                 <button
-                  onClick={() => handleChoose(c.id || index + 1)}
+                  onClick={() => handleChoose(card.id)}
                   className={`w-full h-12 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${
                     isSelected
                       ? "bg-green-800 text-white shadow-md"
@@ -279,6 +320,12 @@ export default function PlanCardsPage({ params }: { params: { id: string } }) {
           );
         })}
       </div>
+      <ShareDialog
+        planId={plan.plan_id}
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        onSuccess={(reportId) => router.push(`/reports/${reportId}`)}
+      />
     </div>
   );
 }

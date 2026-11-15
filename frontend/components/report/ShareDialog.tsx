@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { ShieldCheck, X, Send } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ShieldCheck, X, Send, Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
+import type { Helper, HelperType } from "@/lib/types";
 
 export function ShareDialog({
   planId,
@@ -15,11 +16,51 @@ export function ShareDialog({
   onClose: () => void;
   onSuccess?: (reportId: number) => void;
 }) {
-  const [mentorId, setMentorId] = useState(2);
+  const [helpers, setHelpers] = useState<Helper[]>([]);
+  const [helperType, setHelperType] = useState<HelperType | "all">("all");
+  const [mentorId, setMentorId] = useState<number | null>(null);
   const [shareFields, setShareFields] = useState<string[]>(["cards", "findings"]);
   const [expiresDays, setExpiresDays] = useState<number>(14);
+  const [loadingHelpers, setLoadingHelpers] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+
+    let active = true;
+    setLoadingHelpers(true);
+    setError("");
+    setHelpers([]);
+    setMentorId(null);
+    const filter = helperType === "all" ? "" : `?type=${helperType}`;
+    api<{ items: Helper[] }>(`/helpers${filter}`)
+      .then(({ items }) => {
+        if (!active) return;
+        setHelpers(items);
+        setMentorId((selectedId) =>
+          items.some((helper) => helper.id === selectedId)
+            ? selectedId
+            : (items[0]?.id ?? null)
+        );
+      })
+      .catch((requestError: unknown) => {
+        if (active) {
+          setError(
+            requestError instanceof Error
+              ? requestError.message
+              : "Could not load available advisors."
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setLoadingHelpers(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [open, helperType]);
 
   if (!open) return null;
 
@@ -31,11 +72,15 @@ export function ShareDialog({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (mentorId === null || shareFields.length === 0) {
+      setError("Choose an advisor and at least one section to share.");
+      return;
+    }
     setLoading(true);
     setError("");
 
     try {
-      const data = await api<{ report_id: number }>("/reports", {
+      const data = await api<{ id: number }>("/reports", {
         method: "POST",
         body: JSON.stringify({
           plan_id: planId,
@@ -45,10 +90,14 @@ export function ShareDialog({
         }),
       });
 
-      onSuccess?.(data.report_id);
+      onSuccess?.(data.id);
       onClose();
-    } catch (err: any) {
-      setError(err.message || "Failed to share report");
+    } catch (requestError: unknown) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Failed to share report."
+      );
     } finally {
       setLoading(false);
     }
@@ -68,7 +117,7 @@ export function ShareDialog({
         </div>
 
         <p className="text-xs text-slate-600">
-          Select which sections of your plot and strategy you consent to share with an agricultural student mentor or officer.
+          Select which sections of your plot and strategy you consent to share with an advisor.
         </p>
 
         {error && (
@@ -79,14 +128,36 @@ export function ShareDialog({
 
         <form onSubmit={handleSubmit} className="space-y-4 pt-1">
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-700">Select Advisor</label>
+            <label htmlFor="advisor-type" className="text-xs font-semibold text-slate-700">Advisor type</label>
             <select
-              value={mentorId}
-              onChange={(e) => setMentorId(Number(e.target.value))}
+              id="advisor-type"
+              value={helperType}
+              onChange={(e) => setHelperType(e.target.value as HelperType | "all")}
               className="w-full h-10 px-3 border border-slate-300 rounded-xl text-xs bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
             >
-              <option value={2}>Anjali Menon (KAU Agriculture College Student)</option>
-              <option value={3}>Dr. Radhakrishnan (Krishi Bhavan Officer)</option>
+              <option value="all">All advisors</option>
+              <option value="student">Student mentors</option>
+              <option value="volunteer">Volunteers</option>
+              <option value="college">College mentors</option>
+              <option value="officer">Officers</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label htmlFor="advisor" className="text-xs font-semibold text-slate-700">Select Advisor</label>
+            <select
+              id="advisor"
+              value={mentorId ?? ""}
+              onChange={(e) => setMentorId(Number(e.target.value))}
+              disabled={loadingHelpers || helpers.length === 0}
+              className="w-full h-10 px-3 border border-slate-300 rounded-xl text-xs bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-slate-100"
+            >
+              {loadingHelpers && <option value="">Loading advisors…</option>}
+              {!loadingHelpers && helpers.length === 0 && (
+                <option value="">No advisors available</option>
+              )}
+              {helpers.map((helper) => (
+                <option key={helper.id} value={helper.id}>{helper.label}</option>
+              ))}
             </select>
           </div>
 
@@ -138,10 +209,10 @@ export function ShareDialog({
             </button>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || loadingHelpers || helpers.length === 0 || shareFields.length === 0}
               className="flex-1 h-11 rounded-xl bg-emerald-700 text-white text-xs font-semibold hover:bg-emerald-800 flex items-center justify-center gap-1.5"
             >
-              <Send className="w-3.5 h-3.5" />
+              {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
               {loading ? "Creating Snapshot..." : "Share Scrubbed Snapshot"}
             </button>
           </div>
