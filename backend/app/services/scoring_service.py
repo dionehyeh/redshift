@@ -1,10 +1,17 @@
+import logging
 import math
 
 from app.analysis.core import stored_soil_water, water_outlook
 from app.engine.scoring import get_weights, pick_three, verdict
 from app.errors import AppError
-from app.services.climate_service import load_cell_normals
+from app.services.climate_service import (
+    load_cell_normals,
+    load_point_soil_moisture,
+)
+from app.services.earth_engine_service import EarthObservationDataUnavailable
 from app.services.reference_service import get_seasonal_outlook
+
+logger = logging.getLogger(__name__)
 
 
 def build_scoring_environment(
@@ -45,7 +52,50 @@ def build_scoring_environment(
             status=409,
         )
     
-    stored_mm, _stored_conf, stored_basis = stored_soil_water(answer=stored_water_answer)
+    soil_moisture = None
+    soil_moisture_gap = None
+    if stored_water_answer is None:
+        if field.get("lat") is None or field.get("lon") is None:
+            soil_moisture_gap = (
+                "Field coordinates are unavailable for SMAP/GLDAS sampling; "
+                "a low-confidence default estimate is used."
+            )
+        else:
+            try:
+                soil_moisture = load_point_soil_moisture(
+                    field["lat"], field["lon"]
+                )
+            except EarthObservationDataUnavailable as exc:
+                logger.warning(
+                    "Satellite soil moisture is unavailable for field %s",
+                    field.get("id"),
+                    exc_info=exc,
+                )
+                soil_moisture_gap = (
+                    "SMAP and GLDAS soil-moisture observations are unavailable; "
+                    "a low-confidence default estimate is used."
+                )
+
+    sm_vol = soil_moisture["sm_vol"] if soil_moisture else None
+    stored_mm, stored_confidence, stored_basis = stored_soil_water(
+        answer=stored_water_answer,
+        sm_vol=sm_vol,
+    )
+    stored_water = {
+        "value_mm": stored_mm,
+        "confidence": stored_confidence,
+        "basis": stored_basis,
+        "source": (
+            soil_moisture["source"]
+            if soil_moisture
+            else "Farmer-provided answer"
+            if stored_water_answer is not None
+            else "Low-confidence default"
+        ),
+        "resolution": soil_moisture.get("resolution") if soil_moisture else None,
+        "observed_at": soil_moisture.get("observed_at") if soil_moisture else None,
+        "stale": soil_moisture.get("stale", False) if soil_moisture else False,
+    }
     try:
         seasonal_reference = get_seasonal_outlook()
     except AppError as exc:
@@ -104,6 +154,8 @@ def build_scoring_environment(
         "dry_outlook": (outlook["factor"] < 0.9),
         "bare_gap_days": 60,
         "stored_mm": stored_mm,
+        "stored_water": stored_water,
+        "source_gaps": [soil_moisture_gap] if soil_moisture_gap else [],
         "scenario": scenario or {"rain": 1.0, "temp": 0.0},
         "weights": weights,
         "outlook_info": outlook,

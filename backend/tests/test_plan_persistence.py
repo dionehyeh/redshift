@@ -124,6 +124,8 @@ def test_create_plan_persists_resolved_timing_and_rotation_history(monkeypatch):
             "weights": {"water": 30},
             "stored_mm": 75,
             "stored_basis": "farmer answer",
+            "stored_water": {"value_mm": 75},
+            "source_gaps": [],
         },
     )
     monkeypatch.setattr(
@@ -175,6 +177,8 @@ def test_create_plan_persists_resolved_timing_and_rotation_history(monkeypatch):
     assert (persisted_inputs["start_week"], persisted_inputs["next_week"]) == (2, 18)
     assert persisted_inputs["history"][0]["cause"] == "pest"
     assert persisted_inputs["stored_water_answer"] == "moist"
+    assert persisted_inputs["stored_water"] == {"value_mm": 75}
+    assert persisted_inputs["source_gaps"] == []
     card_insert = next(
         params
         for query, params in connection.statements
@@ -225,6 +229,8 @@ def test_rescore_reuses_saved_inputs_and_persists_updated_card_data(monkeypatch)
             "weights": {"water": 30},
             "stored_mm": 0.0,
             "stored_basis": "farmer answer",
+            "stored_water": {"value_mm": 0.0},
+            "source_gaps": [],
         }
 
     monkeypatch.setattr(plan_service, "build_scoring_environment", fake_environment)

@@ -66,9 +66,10 @@ role; set trusted roles through Clerk `public_metadata` before the user's first 
 
 Field onboarding obtains SRTM terrain and SoilGrids estimates from their source
 services. Set `EE_PROJECT` and configure Google application-default credentials to
-enable MODIS NDVI and GPM IMERG point-series extraction; without Earth Engine access,
-the backend retains NASA POWER rainfall and reports the missing NDVI data instead of
-generating synthetic observations.
+enable MODIS NDVI, GPM IMERG rainfall, and SMAP/GLDAS root-zone soil-moisture
+extraction. Without Earth Engine access, the backend retains NASA POWER rainfall,
+reports missing NDVI, and uses an explicitly low-confidence soil-water estimate
+instead of generating satellite observations.
 
 `DEMO_MODE` controls the health endpoint's demo-source status and defaults to `false`.
 Accepted values are `1`/`true`/`yes`/`on` and `0`/`false`/`no`/`off`.

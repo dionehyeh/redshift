@@ -59,7 +59,21 @@ export interface Plan {
   plan_id: number;
   outlook: { label: string; factor: number; confidence: Confidence };
   weights: Record<string, number>;
-  inputs: { start_week: number; stored_mm: number; stored_basis: string };
+  inputs: {
+    start_week: number;
+    stored_mm: number;
+    stored_basis: string;
+    stored_water?: {
+      value_mm: number;
+      confidence: Confidence;
+      basis: string;
+      source: string;
+      resolution: string | null;
+      observed_at: string | null;
+      stale: boolean;
+    };
+    source_gaps?: string[];
+  };
   cards: PlanCardData[];
   farmer_choice_card: PlanCardData | null;
   chosen_card_id: number | null;

@@ -29,6 +29,56 @@ class FakeResponse:
         return self.payload
 
 
+class FakeInfo:
+    def __init__(self, value):
+        self.value = value
+
+    def getInfo(self):
+        return self.value
+
+
+class FakeSoilMoistureImage:
+    def __init__(self, sample):
+        self.sample = sample
+
+    def reduceRegion(self, **_kwargs):
+        return FakeInfo(self.sample["values"])
+
+    def get(self, _key):
+        return FakeInfo(self.sample["timestamp"])
+
+
+class FakeSoilMoistureCollection:
+    def __init__(self, sample):
+        self.sample = sample
+
+    def filterDate(self, *_args):
+        return self
+
+    def select(self, _bands):
+        return self
+
+    def sort(self, *_args):
+        return self
+
+    def first(self):
+        if self.sample is None:
+            return None
+        return FakeSoilMoistureImage(self.sample)
+
+
+class FakeEarthEngine:
+    EEException = RuntimeError
+    Geometry = type("Geometry", (), {"Point": staticmethod(lambda point: point)})
+    Reducer = type("Reducer", (), {"first": staticmethod(lambda: "first")})
+
+    def __init__(self, samples):
+        self.samples = samples
+
+    def ImageCollection(self, collection_id):
+        return FakeSoilMoistureCollection(self.samples[collection_id])
+
+
 def _soil_payload(values):
     return {
         "properties": {
@@ -205,6 +255,80 @@ def test_imerg_folds_iso_week_53_into_week_52():
 
     assert weekly[52] == 25.0
     assert len(weekly) == 52
+
+
+def test_smap_rootzone_moisture_is_preferred_and_scaled_as_volume_fraction(monkeypatch):
+    ee = FakeEarthEngine(
+        {
+            earth_engine_service.SMAP_COLLECTION: {
+                "values": {"sm_rootzone": 0.24},
+                "timestamp": 1_767_225_600_000,
+            },
+            earth_engine_service.GLDAS_COLLECTION: None,
+        }
+    )
+    monkeypatch.setattr(earth_engine_service, "_earth_engine", lambda: ee)
+
+    result = earth_engine_service.fetch_rootzone_soil_moisture(
+        9.5, 76.4, as_of=date(2026, 1, 1)
+    )
+
+    assert result["sm_vol"] == 0.24
+    assert result["source"] == "NASA SMAP L4 root-zone soil moisture"
+    assert result["resolution"] == "9 km"
+    assert result["observed_at"] == datetime.fromtimestamp(
+        1_767_225_600, UTC
+    ).isoformat()
+
+
+def test_gldas_fills_smap_gap_using_top_metre_soil_water(monkeypatch):
+    ee = FakeEarthEngine(
+        {
+            earth_engine_service.SMAP_COLLECTION: None,
+            earth_engine_service.GLDAS_COLLECTION: {
+                "values": {
+                    "SoilMoi0_10cm_inst": 20,
+                    "SoilMoi10_40cm_inst": 80,
+                    "SoilMoi40_100cm_inst": 200,
+                },
+                "timestamp": 1_767_225_600_000,
+            },
+        }
+    )
+    monkeypatch.setattr(earth_engine_service, "_earth_engine", lambda: ee)
+
+    result = earth_engine_service.fetch_rootzone_soil_moisture(
+        9.5, 76.4, as_of=date(2026, 1, 1)
+    )
+
+    assert result["sm_vol"] == pytest.approx(0.3)
+    assert result["source"] == "NASA GLDAS-2.1 Noah root-zone soil moisture"
+    assert result["resolution"] == "28 km"
+
+
+def test_point_soil_moisture_cache_avoids_repeated_provider_calls(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(climate_service.settings, "cache_dir", str(tmp_path))
+    calls = []
+
+    def fake_fetch(lat, lon, as_of):
+        calls.append((lat, lon, as_of))
+        return {
+            "sm_vol": 0.2,
+            "source": "NASA SMAP L4 root-zone soil moisture",
+            "resolution": "9 km",
+            "observed_at": "2026-01-01T00:00:00+00:00",
+        }
+
+    monkeypatch.setattr(climate_service, "fetch_rootzone_soil_moisture", fake_fetch)
+
+    first = climate_service.load_point_soil_moisture(9.5, 76.4)
+    second = climate_service.load_point_soil_moisture(9.5, 76.4)
+
+    assert first["sm_vol"] == second["sm_vol"] == 0.2
+    assert first["stale"] is False
+    assert len(calls) == 1
 
 
 def test_point_cache_snaps_ndvi_to_a_250_m_grid(tmp_path, monkeypatch):
@@ -529,6 +653,87 @@ def test_valid_scoring_environment_preserves_unknown_soil_values(monkeypatch):
     assert env["field"]["elevation_m"] == 18.5
     assert env["field"]["ph"] is None
     assert env["field"]["drainage"] is None
+
+
+def test_scoring_uses_satellite_soil_moisture_when_farmer_answer_is_missing(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        scoring_service,
+        "load_cell_normals",
+        lambda _cell: {
+            "rain": [10.0] * 52,
+            "tmean": [25.0] * 52,
+            "tmax": [30.0] * 52,
+        },
+    )
+    monkeypatch.setattr(
+        scoring_service,
+        "load_point_soil_moisture",
+        lambda *_args: {
+            "sm_vol": 0.25,
+            "source": "NASA SMAP L4 root-zone soil moisture",
+            "resolution": "9 km",
+            "observed_at": "2026-01-01T00:00:00+00:00",
+            "stale": False,
+        },
+    )
+
+    env = scoring_service.build_scoring_environment(
+        {
+            "id": 7,
+            "lat": 9.5,
+            "lon": 76.4,
+            "climate_cell_id": "09.5N_076.5E",
+            "elevation_m": 18.5,
+        },
+        [],
+        2,
+        24,
+    )
+
+    assert env["stored_mm"] == 90.0
+    assert env["stored_water"]["source"] == "NASA SMAP L4 root-zone soil moisture"
+    assert env["stored_water"]["confidence"] == "medium"
+    assert env["source_gaps"] == []
+
+
+def test_scoring_reports_soil_moisture_gap_when_smap_and_gldas_are_unavailable(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        scoring_service,
+        "load_cell_normals",
+        lambda _cell: {
+            "rain": [10.0] * 52,
+            "tmean": [25.0] * 52,
+            "tmax": [30.0] * 52,
+        },
+    )
+
+    def unavailable(*_args):
+        raise earth_engine_service.EarthObservationDataUnavailable(
+            "providers unavailable"
+        )
+
+    monkeypatch.setattr(scoring_service, "load_point_soil_moisture", unavailable)
+
+    env = scoring_service.build_scoring_environment(
+        {
+            "id": 7,
+            "lat": 9.5,
+            "lon": 76.4,
+            "climate_cell_id": "09.5N_076.5E",
+            "elevation_m": 18.5,
+        },
+        [],
+        2,
+        24,
+    )
+
+    assert env["stored_mm"] == 45.0
+    assert env["stored_water"]["confidence"] == "low"
+    assert "SMAP and GLDAS" in env["source_gaps"][0]
 
 
 def test_scoring_uses_transparent_climatology_when_no_current_outlook(monkeypatch):

@@ -94,6 +94,15 @@ $$\text{Available Water} = \text{Effective Rainfall} + \text{Stored Soil Water}$
   2. Satellite soil moisture (SMAP/GLDAS) scaled between wilting point ($0.10$) and field capacity ($0.35$).
   3. Default fallback: $30\%$ capacity ($45\text{ mm}$) labeled with **Low Confidence**.
 
+The backend samples the latest available SMAP L4 `sm_rootzone` pixel within
+the preceding 14 days. If SMAP has no usable sample, it derives top-metre
+volumetric moisture from the three upper GLDAS Noah soil-water layers. Point
+results are cached for 24 hours; a stale cache is used for at most 7 days and
+reported as stale. SMAP is approximately 9 km and GLDAS approximately 28 km, so
+these are regional estimates rather than field-scale measurements. Plans expose
+the selected provider, observation time, resolution, confidence, and any source
+gap in their saved inputs.
+
 ## 6. Runtime Diagnosis Behavior
 
 Season analysis uses the field's cached weekly series and the season's recorded dates.
