@@ -6,7 +6,7 @@ import math
 import os
 import re
 import tempfile
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -18,6 +18,7 @@ from app.services.earth_engine_service import (
     EarthObservationDataUnavailable,
     fetch_imerg_weekly,
     fetch_modis_ndvi,
+    fetch_rootzone_soil_moisture,
     modis_samples_to_daily,
 )
 
@@ -301,6 +302,63 @@ def load_point_imerg_weekly(
     frame.index.name = "week"
     _write_parquet_atomic(frame, path)
     return weekly
+
+
+def load_point_soil_moisture(
+    lat: float,
+    lon: float,
+    refresh: bool = False,
+) -> dict:
+    """Load a recent SMAP/GLDAS estimate, reusing a short-lived point cache."""
+    path = get_point_cache_path(lat, lon, "soil_moisture")
+    now = datetime.now(UTC)
+    cached = None
+    cache_age = None
+    if os.path.exists(path):
+        frame = pd.read_parquet(path)
+        if not frame.empty:
+            row = frame.iloc[-1]
+            fetched_at = pd.to_datetime(row["fetched_at"], utc=True).to_pydatetime()
+            cached = {
+                "sm_vol": float(row["sm_vol"]),
+                "source": str(row["source"]),
+                "resolution": str(row["resolution"]),
+                "observed_at": str(row["observed_at"]),
+                "stale": False,
+            }
+            cache_age = now - fetched_at
+            if not refresh and cache_age <= timedelta(hours=24):
+                return cached
+    if settings.demo_mode:
+        if cached is not None and cache_age <= timedelta(days=7):
+            return {**cached, "stale": True}
+        raise EarthObservationDataUnavailable(
+            "No cached SMAP or GLDAS soil-moisture estimate is available in demo mode"
+        )
+
+    try:
+        result = fetch_rootzone_soil_moisture(lat, lon, as_of=now.date())
+    except EarthObservationDataUnavailable:
+        if cached is not None and cache_age <= timedelta(days=7):
+            logger.warning(
+                "Using a stale cached soil-moisture estimate for %s,%s",
+                lat,
+                lon,
+            )
+            return {**cached, "stale": True}
+        raise
+
+    cached_result = {**result, "stale": False}
+    frame = pd.DataFrame(
+        [
+            {
+                **result,
+                "fetched_at": now.isoformat(),
+            }
+        ]
+    )
+    _write_parquet_atomic(frame, path)
+    return cached_result
 
 
 def _read_cached_normals(path: str) -> dict[str, list[float]]:

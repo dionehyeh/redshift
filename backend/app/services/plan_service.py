@@ -260,6 +260,8 @@ def create_plan_service(field_id: int, request_body: dict) -> dict:
         "stored_water_answer": stored_water_answer,
         "stored_mm": env["stored_mm"],
         "stored_basis": env["stored_basis"],
+        "stored_water": env["stored_water"],
+        "source_gaps": env["source_gaps"],
         "scenario": env["scenario"],
         "toggle": toggle,
         "history": history,
@@ -441,6 +443,8 @@ def rescore_plan_service(
             "toggle": toggle,
             "stored_mm": env["stored_mm"],
             "stored_basis": env["stored_basis"],
+            "stored_water": env["stored_water"],
+            "source_gaps": env["source_gaps"],
             "farmer_choice_card": farmer_choice_card,
         }
     )

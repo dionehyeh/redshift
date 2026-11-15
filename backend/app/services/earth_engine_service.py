@@ -12,6 +12,8 @@ from app.config import settings
 
 MODIS_COLLECTION = "MODIS/061/MOD13Q1"
 IMERG_COLLECTION = "NASA/GPM_L3/IMERG_V07"
+SMAP_COLLECTION = "NASA/SMAP/SPL4SMGP/008"
+GLDAS_COLLECTION = "NASA/GLDAS/V021/NOAH/G025/T3H"
 logger = logging.getLogger(__name__)
 
 
@@ -22,13 +24,13 @@ class EarthObservationDataUnavailable(RuntimeError):
 def _earth_engine():
     if not settings.ee_project:
         raise EarthObservationDataUnavailable(
-            "EE_PROJECT is required to retrieve MODIS and IMERG data"
+            "EE_PROJECT is required to retrieve MODIS, IMERG, SMAP, and GLDAS data"
         )
     try:
         import ee
     except ImportError as exc:
         raise EarthObservationDataUnavailable(
-            "earthengine-api is required to retrieve MODIS and IMERG data"
+            "earthengine-api is required to retrieve MODIS, IMERG, SMAP, and GLDAS data"
         ) from exc
 
     try:
@@ -236,3 +238,132 @@ def fetch_imerg_weekly(
     if not isinstance(features_data, list):
         raise EarthObservationDataUnavailable("GPM IMERG returned an invalid response")
     return imerg_features_to_weekly(features_data, year)
+
+
+def _soil_moisture_sample(
+    ee: Any,
+    collection_id: str,
+    bands: list[str],
+    point: Any,
+    start_date: date,
+    end_date: date,
+    scale: int,
+) -> tuple[dict[str, Any], int]:
+    collection = (
+        ee.ImageCollection(collection_id)
+        .filterDate(start_date.isoformat(), end_date.isoformat())
+        .select(bands)
+        .sort("system:time_start", False)
+    )
+    image = collection.first()
+    if image is None:
+        raise EarthObservationDataUnavailable(
+            f"{collection_id} has no recent soil-moisture observations"
+        )
+    values = image.reduceRegion(
+        reducer=ee.Reducer.first(),
+        geometry=point,
+        scale=scale,
+        maxPixels=1000,
+    ).getInfo()
+    timestamp = image.get("system:time_start").getInfo()
+    if not isinstance(values, dict) or not isinstance(timestamp, (int, float)):
+        raise EarthObservationDataUnavailable(
+            f"{collection_id} returned an invalid soil-moisture sample"
+        )
+    return values, int(timestamp)
+
+
+def fetch_rootzone_soil_moisture(
+    lat: float,
+    lon: float,
+    as_of: date | None = None,
+) -> dict[str, Any]:
+    """Fetch recent top-metre root-zone moisture, preferring SMAP over GLDAS."""
+    if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
+        raise ValueError("latitude or longitude is out of range")
+
+    ee = _earth_engine()
+    today = as_of or date.today()
+    start_date = today - timedelta(days=14)
+    end_date = today + timedelta(days=1)
+    point = ee.Geometry.Point([lon, lat])
+    providers = (
+        (
+            SMAP_COLLECTION,
+            ["sm_rootzone"],
+            11000,
+            lambda values: values.get("sm_rootzone"),
+            "NASA SMAP L4 root-zone soil moisture",
+            "9 km",
+        ),
+        (
+            GLDAS_COLLECTION,
+            [
+                "SoilMoi0_10cm_inst",
+                "SoilMoi10_40cm_inst",
+                "SoilMoi40_100cm_inst",
+            ],
+            27830,
+            lambda values: sum(
+                float(values[band])
+                for band in (
+                    "SoilMoi0_10cm_inst",
+                    "SoilMoi10_40cm_inst",
+                    "SoilMoi40_100cm_inst",
+                )
+            ) / 1000,
+            "NASA GLDAS-2.1 Noah root-zone soil moisture",
+            "28 km",
+        ),
+    )
+
+    failures = []
+    for collection_id, bands, scale, convert, source, resolution in providers:
+        try:
+            values, timestamp = _soil_moisture_sample(
+                ee,
+                collection_id,
+                bands,
+                point,
+                start_date,
+                end_date,
+                scale,
+            )
+            moisture = convert(values)
+            if (
+                isinstance(moisture, bool)
+                or not isinstance(moisture, (int, float))
+                or not math.isfinite(float(moisture))
+                or not 0 <= float(moisture) <= 0.9
+            ):
+                raise EarthObservationDataUnavailable(
+                    f"{collection_id} returned no valid root-zone moisture value"
+                )
+        except (
+            ee.EEException,
+            GoogleAuthError,
+            HttpError,
+            OSError,
+            TypeError,
+            ValueError,
+            EarthObservationDataUnavailable,
+        ) as exc:
+            logger.warning(
+                "Could not retrieve soil moisture from %s",
+                collection_id,
+                exc_info=exc,
+            )
+            failures.append(exc)
+            continue
+
+        return {
+            "sm_vol": float(moisture),
+            "source": source,
+            "resolution": resolution,
+            "observed_at": datetime.fromtimestamp(timestamp / 1000, UTC).isoformat(),
+        }
+
+    raise EarthObservationDataUnavailable(
+        "Recent SMAP and GLDAS root-zone soil moisture are unavailable"
+    ) from (failures[-1] if failures else None)
