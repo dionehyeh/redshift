@@ -1,43 +1,39 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ShieldAlert } from "lucide-react";
+import { api } from "@/lib/api";
+import type { DataSource } from "@/lib/types";
 
 export default function AboutPage() {
-  const sources = [
-    {
-      name: "NASA POWER",
-      purpose:
-        "20-year climatological normals, thermal limits, solar radiation",
-      res: "~50 km (0.5 deg)",
-      latency: "Near Real-Time (~2 days)",
-    },
-    {
-      name: "GPM IMERG",
-      purpose:
-        "Precipitation estimates, dry spell tracking, waterlogging risk",
-      res: "~10 km (0.1 deg)",
-      latency: "Late run ~14 hours; Final run ~3.5 months",
-    },
-    {
-      name: "MODIS (MOD13Q1)",
-      purpose:
-        "Vegetation health (NDVI) curve, crop greenness dips, fallow windows",
-      res: "250 m (16-day)",
-      latency: "1–2 weeks",
-    },
-    {
-      name: "SRTM GL1",
-      purpose:
-        "Topography, slope gradient, flood-prone low-lying basin flag",
-      res: "30 m (1 arc-sec)",
-      latency: "Static DEM",
-    },
-    {
-      name: "ISRIC SoilGrids",
-      purpose: "Baseline soil pH, texture, and organic carbon estimate",
-      res: "250 m",
-      latency: "Static ML model",
-    },
-  ];
+  const [sources, setSources] = useState<DataSource[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    api<{ items: DataSource[] }>("/sources")
+      .then(({ items }) => {
+        if (active) setSources(items);
+      })
+      .catch((requestError: unknown) => {
+        if (active) {
+          setError(
+            requestError instanceof Error
+              ? requestError.message
+              : "Could not load data-source information."
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-stone-50 via-stone-100 to-amber-50">
@@ -90,6 +86,14 @@ export default function AboutPage() {
           <h2 className="text-xl font-extrabold text-stone-900">
             🛰️ Earth Observation Data Catalog
           </h2>
+          {loading && (
+            <p className="text-sm text-stone-500">Loading source catalog…</p>
+          )}
+          {error && (
+            <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+              {error}
+            </p>
+          )}
           <div className="overflow-x-auto rounded-2xl border-2 border-stone-200 bg-white shadow-sm">
             <table className="w-full text-left text-sm">
               <thead>
@@ -101,21 +105,31 @@ export default function AboutPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100">
-                {sources.map((s, i) => (
+                {sources.map((source, i) => (
                   <tr
-                    key={s.name}
+                    key={source.name}
                     className={`${
                       i % 2 === 0 ? "bg-white" : "bg-stone-50"
                     } hover:bg-emerald-50 transition-colors`}
                   >
-                    <td className="p-4 font-bold text-stone-900">{s.name}</td>
-                    <td className="p-4 text-stone-600">{s.purpose}</td>
-                    <td className="p-4 font-mono text-xs text-stone-500">
-                      {s.res}
+                    <td className="p-4 font-bold text-stone-900">{source.name}</td>
+                    <td className="p-4 text-stone-600">
+                      {source.used_for}
+                      <p className="mt-1 text-xs text-stone-500">{source.limits}</p>
                     </td>
-                    <td className="p-4 text-xs text-stone-500">{s.latency}</td>
+                    <td className="p-4 font-mono text-xs text-stone-500">
+                      {source.resolution}
+                    </td>
+                    <td className="p-4 text-xs text-stone-500">{source.latency}</td>
                   </tr>
                 ))}
+                {!loading && !error && sources.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="p-5 text-center text-sm text-stone-500">
+                      No source information is currently available.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

@@ -134,7 +134,10 @@ the season for the next occurrence of its ISO start week.
 
 Report access is limited to its creating farmer or designated helper while the
 report is unexpired and not revoked. Comments and inbox entries follow the same
-active-share requirement. A report snapshot contains only selected sections:
+active-share requirement. The mentor inbox includes only reports awaiting review
+(`sent` or `viewed`); reports with comments are no longer pending. `/helpers` is
+farmer-only and accepts an optional `type` filter: `student`, `volunteer`,
+`college`, or `officer`. A report snapshot contains only selected sections:
 field terrain/soil attributes (`field_profile`), completed-season crop/outcome
 history (`history`), plan strategy cards (`cards`), and scrubbed stress findings
 (`findings`). Unselected sections are neither queried for the snapshot nor
@@ -166,6 +169,16 @@ is used.
 | # | Method | Path | Auth | Description |
 |---|---|---|---|---|
 | 36 | `GET` | `/jobs/{id}` | Owner | Poll status, step, and progress of background task |
-| 37 | `GET` | `/health` | Public | System status, external data connectivity & DEMO_MODE |
+| 37 | `GET` | `/health` | Public | API status, provider configuration readiness, and DEMO_MODE |
+
+`GET /jobs/{id}` requires an authenticated farmer session and returns a job only
+when its field or season belongs to that farmer. Unknown and inaccessible job IDs
+both return `404 JOB_NOT_FOUND`.
+
+The health endpoint does not synchronously probe upstream services. In `sources`,
+`not_checked` means public NASA POWER or SoilGrids reachability has not been tested;
+`configured_not_checked` means `EE_PROJECT` is set but Earth Engine reachability has
+not been tested; `requires_ee_project` means Earth Engine-backed IMERG and MODIS
+retrieval cannot be configured. A completed data request is the connectivity check.
 
 When weekly observations are unavailable, the field timeline returns climatological estimates instead. Metrics absent from the climate cache, including NDVI, are omitted rather than fabricated.

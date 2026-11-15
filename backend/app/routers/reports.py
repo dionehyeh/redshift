@@ -1,7 +1,8 @@
 import json
 from datetime import UTC, datetime
+from typing import Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.db import get_db
 from app.deps import current_user, require_role
@@ -150,7 +151,7 @@ def get_mentor_inbox(user: dict = Depends(require_role("mentor", "officer"))):
                JOIN plans p ON p.id = r.plan_id
                JOIN fields f ON f.id = p.field_id
                WHERE r.shared_with = ? AND r.revoked_at IS NULL
-                 AND r.status <> 'revoked' AND r.expires_at > ?
+                 AND r.status IN ('sent', 'viewed') AND r.expires_at > ?
                  AND r.created_by = f.farmer_id
                ORDER BY r.created_at DESC""",
             (user["id"], now),
@@ -158,17 +159,30 @@ def get_mentor_inbox(user: dict = Depends(require_role("mentor", "officer"))):
         return {"items": [dict(r) for r in rows], "next_cursor": None}
 
 @router.get("/helpers")
-def list_helpers(type: str | None = None, user: dict = Depends(current_user)):
+def list_helpers(
+    type: Literal["student", "volunteer", "college", "officer"] | None = Query(None),
+    user: dict = Depends(require_role("farmer")),
+):
     with get_db() as conn:
-        rows = conn.execute("SELECT id, name, role, helper_type FROM users WHERE role IN ('mentor', 'officer')").fetchall()
+        query = """SELECT id, name, role, helper_type FROM users
+                   WHERE role IN ('mentor', 'officer')"""
+        params: tuple[str, ...] = ()
+        if type == "officer":
+            query += " AND (role = 'officer' OR helper_type = ?)"
+            params = (type,)
+        elif type:
+            query += " AND role = 'mentor' AND COALESCE(helper_type, 'student') = ?"
+            params = (type,)
+        query += " ORDER BY name, id"
+        rows = conn.execute(query, params).fetchall()
         return {
             "items": [
                 {
                     "id": r["id"],
                     "name": r["name"],
                     "role": r["role"],
-                    "helper_type": r["helper_type"] or "student",
-                    "label": f"{r['name']} ({r['helper_type'] or r['role']})",
+                    "helper_type": r["helper_type"] or ("officer" if r["role"] == "officer" else "student"),
+                    "label": f"{r['name']} ({r['helper_type'] or ('officer' if r['role'] == 'officer' else 'student')})",
                 }
                 for r in rows
             ]

@@ -13,19 +13,32 @@ export function ExplainerSheet({
 }) {
   const [open, setOpen] = useState(false);
   const [card, setCard] = useState<{ title: string; body: string } | null>(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    if (open && !card) {
+    if (open) {
+      let active = true;
+      setCard(null);
+      setError("");
       api<{ title: string; body: string }>(`/explainers/${explainerKey}`)
-        .then((data) => setCard(data))
-        .catch(() =>
-          setCard({
-            title: "NASA Earth Science Explainer",
-            body: "Satellite observations (NASA POWER solar radiation, GPM IMERG precipitation, SRTM DEM elevation) are combined with 20-year climatological baselines to determine risk thresholds and optimal agronomic planting windows.",
-          })
-        );
+        .then((data) => {
+          if (active) setCard(data);
+        })
+        .catch((requestError: unknown) => {
+          if (active) {
+            setError(
+              requestError instanceof Error
+                ? requestError.message
+                : "Could not load this explainer."
+            );
+          }
+        });
+
+      return () => {
+        active = false;
+      };
     }
-  }, [open, explainerKey, card]);
+  }, [open, explainerKey]);
 
   return (
     <>
@@ -43,7 +56,7 @@ export function ExplainerSheet({
           <div className="w-full max-w-md p-6 bg-white rounded-2xl shadow-xl space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-lg text-slate-900">
-                {card?.title || "Loading Explainer..."}
+                {card?.title || (error ? "Explainer unavailable" : "Loading explainer…")}
               </h3>
               <button
                 onClick={() => setOpen(false)}
@@ -53,7 +66,7 @@ export function ExplainerSheet({
               </button>
             </div>
             <p className="text-sm text-slate-700 leading-relaxed">
-              {card?.body || "Fetching explainer content..."}
+              {card?.body || error || "Loading explainer content…"}
             </p>
             <div className="pt-2 text-right">
               <button

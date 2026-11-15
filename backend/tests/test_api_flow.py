@@ -10,9 +10,13 @@ def test_health_check():
     data = res.json()
     assert data["status"] == "ok"
     assert isinstance(data["demo_mode"], bool)
-    assert data["sources"]["imerg"] == (
-        "cached" if data["demo_mode"] else "ok"
-    )
+    assert data["sources"]["power"] == "not_checked"
+    assert data["sources"]["soilgrids"] == "not_checked"
+    assert data["sources"]["imerg"] == data["sources"]["modis"]
+    assert data["sources"]["imerg"] in {
+        "configured_not_checked",
+        "requires_ee_project",
+    }
 
 def test_crops_catalog_endpoint():
     res = client.get("/api/v1/crops")
