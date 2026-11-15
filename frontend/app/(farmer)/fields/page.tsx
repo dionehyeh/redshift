@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { serverApi } from "@/lib/server-api";
 import type { FieldListItem, FieldListResponse } from "@/lib/field-types";
+import { ApiError } from "@/lib/api-error";
 import { formatHectares } from "@/lib/format";
 import { ErrorBanner } from "@/components/common/ErrorBanner";
 
@@ -97,11 +98,11 @@ export default async function FieldsPage() {
   let fetchError: { code: string; message: string } | null = null;
 
   try {
-    const data = await serverApi<FieldListResponse | { items: FieldListItem[] }>("/fields");
-    fields = data.items || [];
+    const data = await serverApi<FieldListResponse>("/fields");
+    fields = data.items;
   } catch (err) {
     fetchError = {
-      code: "DATA_UNAVAILABLE",
+      code: err instanceof ApiError ? err.code : "DATA_UNAVAILABLE",
       message:
         err instanceof Error
           ? err.message
@@ -275,8 +276,16 @@ export default async function FieldsPage() {
                       <ArrowRight className="w-4 h-4" />
                     </Link>
                     <Link
-                      href={`/fields/${field.id}/plan/new`}
-                      title="Plan Crop Rotation"
+                      href={
+                        field.profile_status === "ready"
+                          ? `/fields/${field.id}/plan/new`
+                          : `/fields/${field.id}`
+                      }
+                      title={
+                        field.profile_status === "ready"
+                          ? "Plan Crop Rotation"
+                          : "View field setup status"
+                      }
                       className="w-10 h-10 rounded-xl bg-stone-100 hover:bg-emerald-100 text-stone-500 hover:text-emerald-700 flex items-center justify-center transition-all"
                     >
                       <Compass className="w-5 h-5" />

@@ -11,11 +11,12 @@ import {
   Mountain,
 } from "lucide-react";
 import { serverApi } from "@/lib/server-api";
-import { ApiError } from "@/lib/api";
 import { formatHectares } from "@/lib/format";
 import type {
+  FeasibleCrop,
   FeasibleCropsResponse,
   FieldHistoryResponse,
+  FieldHistorySeason,
   FieldMapData,
   FieldProfile,
   FieldTimeline,
@@ -72,36 +73,44 @@ export default async function FieldDetailPage({
   }
 
   const [feasibleResult, historyResult, mapResult, timelineResult] = await Promise.allSettled([
-    serverApi<FeasibleCropsResponse | { crops: any[] }>(`/fields/${fieldId}/feasible-crops`),
-    serverApi<FieldHistoryResponse | { seasons: any[] }>(`/fields/${fieldId}/history`),
+    field.profile_status === "ready"
+      ? serverApi<FeasibleCropsResponse>(`/fields/${fieldId}/feasible-crops`)
+      : Promise.resolve(null),
+    serverApi<FieldHistoryResponse>(`/fields/${fieldId}/history`),
     serverApi<FieldMapData>(`/fields/${fieldId}/map`),
     serverApi<FieldTimeline>(`/fields/${fieldId}/timeline`),
   ]);
 
-  const feasible =
-    feasibleResult.status === "fulfilled"
-      ? "suitable" in feasibleResult.value
-        ? [...feasibleResult.value.suitable, ...feasibleResult.value.marginal, ...feasibleResult.value.not_suitable]
-        : (feasibleResult.value as any).crops || []
+  const feasible: FeasibleCrop[] =
+    feasibleResult.status === "fulfilled" && feasibleResult.value
+      ? [
+          ...feasibleResult.value.suitable,
+          ...feasibleResult.value.marginal,
+          ...feasibleResult.value.not_suitable,
+        ]
       : [];
 
-  const history =
+  const history: FieldHistorySeason[] =
     historyResult.status === "fulfilled"
-      ? (historyResult.value as any).seasons || []
+      ? historyResult.value.seasons
       : [];
 
   const mapData = mapResult.status === "fulfilled" ? mapResult.value : null;
   const timeline = timelineResult.status === "fulfilled" ? timelineResult.value : null;
 
   const errors = [
-    ...([feasibleResult, historyResult, mapResult, timelineResult].flatMap((result, index) => {
-      if (result.status === "fulfilled") return [];
-      const error = result.reason;
-      if (index === 0 && error instanceof ApiError && error.code === "FIELD_NOT_READY") return [];
-      const labels = ["Crop suitability", "Season history", "Field map", "Climate timeline"];
-      return [`${labels[index]}: ${error instanceof Error ? error.message : "Request failed"}`];
-    })),
-  ];
+    { label: "Crop suitability", result: feasibleResult },
+    { label: "Season history", result: historyResult },
+    { label: "Field map", result: mapResult },
+    { label: "Climate timeline", result: timelineResult },
+  ].flatMap(({ label, result }) => {
+    if (result.status === "fulfilled") return [];
+    return [
+      `${label}: ${
+        result.reason instanceof Error ? result.reason.message : "Request failed"
+      }`,
+    ];
+  });
 
   const profile = field.profile || {};
   const jobId = searchParams?.job_id;
@@ -136,7 +145,7 @@ export default async function FieldDetailPage({
                 {location(field.lat, field.lon)}
               </span>
               <span>•</span>
-              <span>{field.area_ha ? formatHectares(field.area_ha) : "1.2 ha"}</span>
+              <span>{field.area_ha ? formatHectares(field.area_ha) : "Area not provided"}</span>
               <span>•</span>
               <span className="capitalize">{field.water_source} Irrigation</span>
             </div>
@@ -155,12 +164,14 @@ export default async function FieldDetailPage({
             >
               <Calendar className="w-4 h-4 text-amber-300" /> Log Season
             </Link>
-            <Link
-              href={`/fields/${fieldId}/plan/new`}
-              className="px-6 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-400 hover:to-green-400 text-white text-sm font-extrabold flex items-center gap-2 shadow-lg transition"
-            >
-              <Compass className="w-4 h-4" /> Plan Rotations
-            </Link>
+            {field.profile_status === "ready" && (
+              <Link
+                href={`/fields/${fieldId}/plan/new`}
+                className="px-6 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-400 hover:to-green-400 text-white text-sm font-extrabold flex items-center gap-2 shadow-lg transition"
+              >
+                <Compass className="w-4 h-4" /> Plan Rotations
+              </Link>
+            )}
           </div>
         </div>
       </div>
@@ -179,6 +190,15 @@ export default async function FieldDetailPage({
         </div>
       )}
 
+      {field.gaps.length > 0 && (
+        <section className="rounded-2xl border-2 border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
+          <h2 className="font-bold">Data gaps for this field</h2>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            {field.gaps.map((gap) => <li key={gap}>{gap}</li>)}
+          </ul>
+        </section>
+      )}
+
       {errors.length > 0 && (
         <div role="alert" className="space-y-1 rounded-2xl border-2 border-red-200 bg-red-50 p-5 text-sm text-red-800 font-medium">
           {errors.map((error) => (
@@ -192,39 +212,39 @@ export default async function FieldDetailPage({
         <div className="p-5 bg-white border-2 border-stone-200 rounded-2xl shadow-sm space-y-1">
           <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Elevation</span>
           <div className="text-2xl font-black text-stone-900">
-            {profile.elevation_m?.value ?? "4.0"} {profile.elevation_m?.value != null ? "m" : ""}
+            {profile.elevation_m?.value == null ? "Unavailable" : `${profile.elevation_m.value} m`}
           </div>
           <span className="text-[11px] text-green-700 font-semibold block">
-            {profile.elevation_m?.source || "SRTM GL1 (30m)"}
+            {profile.elevation_m?.source || "Source unavailable"}
           </span>
         </div>
 
         <div className="p-5 bg-white border-2 border-stone-200 rounded-2xl shadow-sm space-y-1">
           <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Drainage & Hydrology</span>
           <div className="text-2xl font-black text-stone-900 capitalize">
-            {String(profile.drainage?.value ?? "Poor")}
+            {String(profile.drainage?.value ?? "Unavailable")}
           </div>
           <span className="text-[11px] text-amber-700 font-semibold block">
             {profile.flood_prone?.value === true
               ? "⚠️ Low-lying flood basin"
               : profile.flood_prone?.value === false
               ? "Normal runoff"
-              : "Historical rain model"}
+              : "Flood status unavailable"}
           </span>
         </div>
 
         <div className="p-5 bg-white border-2 border-stone-200 rounded-2xl shadow-sm space-y-1">
           <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Soil Reaction (pH)</span>
-          <div className="text-2xl font-black text-stone-900">{profile.soil_ph?.value ?? "5.4"}</div>
+          <div className="text-2xl font-black text-stone-900">{profile.soil_ph?.value ?? "Unavailable"}</div>
           <span className="text-[11px] text-green-700 font-semibold block">
-            {profile.soil_ph?.source || "Soil Health Card / KAU"}
+            {profile.soil_ph?.source || "Source unavailable"}
           </span>
         </div>
 
         <div className="p-5 bg-white border-2 border-stone-200 rounded-2xl shadow-sm space-y-1">
           <span className="text-xs font-bold uppercase tracking-wider text-stone-500">Water Quality</span>
-          <div className="text-2xl font-black text-stone-900 capitalize">{field.water_quality ?? "Good"}</div>
-          <span className="text-[11px] text-blue-700 font-semibold block">Source: {field.water_source ?? "Canal"}</span>
+          <div className="text-2xl font-black text-stone-900 capitalize">{field.water_quality}</div>
+          <span className="text-[11px] text-blue-700 font-semibold block">Source: {field.water_source}</span>
         </div>
       </div>
 
@@ -235,12 +255,12 @@ export default async function FieldDetailPage({
             <div>
               <h2 className="text-xl font-extrabold text-stone-900">Field Map</h2>
               <p className="text-xs text-stone-500 font-mono">
-                {location(field.lat, field.lon)} · {field.area_ha ?? "1.2"} hectares
+                {location(field.lat, field.lon)} · {field.area_ha != null ? `${field.area_ha} hectares` : "Area not provided"}
               </p>
             </div>
             <div className="text-right text-xs text-stone-600">
-              <p>Elevation: {profile.elevation_m?.value ?? "4.0"} m</p>
-              <p>Flood status: {profile.flood_prone?.value ? "Prone" : "Not flagged"}</p>
+              <p>Elevation: {profile.elevation_m?.value != null ? `${profile.elevation_m.value} m` : "Unavailable"}</p>
+              <p>Flood status: {profile.flood_prone?.value == null ? "Unknown" : profile.flood_prone.value ? "Prone" : "Not flagged"}</p>
             </div>
           </div>
           <FieldMap data={mapData} lat={field.lat} lon={field.lon} />
@@ -255,7 +275,7 @@ export default async function FieldDetailPage({
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-2xl font-extrabold text-stone-900">Regional Feasible Crops</h2>
-            <p className="text-sm text-stone-500">Cross-matched against local soil pH, elevation, and 20-year NASA IMERG normals.</p>
+            <p className="text-sm text-stone-500">Matched against the available field soil, terrain, and climate profile.</p>
           </div>
           <span className="text-xs px-3 py-1 bg-green-100 text-green-800 rounded-full font-bold">
             Kerala Agro-Ecological Zones
@@ -270,12 +290,12 @@ export default async function FieldDetailPage({
           </p>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {feasible.map((fc: any) => {
-              const cropName = fc.crop_name || fc.crop || "Crop";
+            {feasible.map((fc) => {
+              const cropName = fc.crop_name;
               const malayalam = fc.name_ml ? ` (${fc.name_ml})` : "";
               return (
                 <div
-                  key={fc.crop_id || fc.crop || cropName}
+                  key={fc.crop_id}
                   className="p-5 rounded-2xl border-2 border-stone-200 bg-stone-50/50 hover:border-green-300 transition flex flex-col justify-between space-y-3"
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -331,7 +351,7 @@ export default async function FieldDetailPage({
           </div>
         ) : (
           <div className="space-y-4">
-            {history.map((s: any) => (
+            {history.map((s) => (
               <div
                 key={s.id}
                 className="p-5 bg-stone-50 border-2 border-stone-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4"

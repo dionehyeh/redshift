@@ -70,7 +70,9 @@ export function JobProgress({ jobId, onDone, onError }: JobProgressProps) {
           </p>
           <p className="text-xs text-slate-500">
             {completed
-              ? "All data sources loaded"
+              ? status === "done_with_gaps"
+                ? "Review the field profile for unavailable data sources."
+                : "Field profile data is ready."
               : status === "failed"
               ? error || "Unknown error"
               : status === "unavailable"

@@ -78,7 +78,7 @@ def create_field_record(
 
 def list_field_records(farmer_id: int, status: str | None = None) -> list[dict[str, Any]]:
     query = """SELECT id, name, lat, lon, area_ha, profile_status, climate_cell_id,
-                      water_source, created_at
+                      water_source, water_quality, created_at
                FROM fields
                WHERE farmer_id = ?"""
     params: tuple[Any, ...] = (farmer_id,)

@@ -3,7 +3,14 @@
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import type { FieldPatchResponse, FieldProfile } from "@/lib/field-types";
+import type {
+  FieldCorrection,
+  FieldPatchRequest,
+  FieldPatchResponse,
+  FieldProfile,
+  FieldWaterQuality,
+  FieldWaterSource,
+} from "@/lib/field-types";
 import { JobProgress } from "@/components/fields/JobProgress";
 
 export function FieldProfileEditor({ field }: { field: FieldProfile }) {
@@ -12,8 +19,8 @@ export function FieldProfileEditor({ field }: { field: FieldProfile }) {
   const [latitude, setLatitude] = useState(String(field.lat));
   const [longitude, setLongitude] = useState(String(field.lon));
   const [area, setArea] = useState(field.area_ha?.toString() || "");
-  const [waterSource, setWaterSource] = useState(field.water_source);
-  const [waterQuality, setWaterQuality] = useState(field.water_quality);
+  const [waterSource, setWaterSource] = useState<FieldWaterSource>(field.water_source);
+  const [waterQuality, setWaterQuality] = useState<FieldWaterQuality>(field.water_quality);
   const [soilPh, setSoilPh] = useState("");
   const [soilOc, setSoilOc] = useState("");
   const [soilTexture, setSoilTexture] = useState("");
@@ -29,25 +36,38 @@ export function FieldProfileEditor({ field }: { field: FieldProfile }) {
     event.preventDefault();
     setSaving(true);
     setError(null);
-    const corrections: Array<{ key: string; value: string | number }> = [];
+    const corrections: FieldCorrection[] = [];
     if (soilPh.trim()) corrections.push({ key: "soil_ph", value: Number(soilPh) });
     if (soilOc.trim()) corrections.push({ key: "soil_oc", value: Number(soilOc) });
     if (soilTexture.trim()) corrections.push({ key: "soil_texture", value: soilTexture.trim() });
+    const coordinatesChanged =
+      Number(latitude) !== field.lat || Number(longitude) !== field.lon;
+    if (coordinatesChanged && corrections.length > 0) {
+      setError("Save the new coordinates first. Soil corrections can be submitted after the profile rebuild finishes.");
+      setSaving(false);
+      return;
+    }
 
     try {
+      const request: FieldPatchRequest = {
+        name: name.trim(),
+        lat: Number(latitude),
+        lon: Number(longitude),
+        ...(area.trim() ? { area_ha: Number(area) } : {}),
+        water_source: waterSource,
+        water_quality: waterQuality,
+        ...(corrections.length > 0 ? { corrections } : {}),
+      };
       const result = await api<FieldPatchResponse>(`/fields/${field.id}`, {
         method: "PATCH",
-        body: JSON.stringify({
-          name,
-          lat: Number(latitude),
-          lon: Number(longitude),
-          area_ha: area.trim() ? Number(area) : undefined,
-          water_source: waterSource,
-          water_quality: waterQuality,
-          ...(corrections.length > 0 ? { corrections } : {}),
-        }),
+        body: JSON.stringify(request),
       });
-      if (result.job_id) setJobId(result.job_id);
+      if (result.status === "queued") {
+        if (!result.job_id) {
+          throw new Error("The backend did not return a job ID for the profile rebuild");
+        }
+        setJobId(result.job_id);
+      }
       else {
         setSoilPh("");
         setSoilOc("");
@@ -85,7 +105,7 @@ export function FieldProfileEditor({ field }: { field: FieldProfile }) {
         </label>
         <label className="space-y-1 text-sm text-slate-700">
           Water source
-          <select value={waterSource} onChange={(event) => setWaterSource(event.target.value)} className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3">
+          <select value={waterSource} onChange={(event) => setWaterSource(event.target.value as FieldWaterSource)} className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3">
             <option value="rainfed">Rain-fed</option>
             <option value="borewell">Borewell</option>
             <option value="canal">Canal irrigation</option>
@@ -94,7 +114,7 @@ export function FieldProfileEditor({ field }: { field: FieldProfile }) {
         </label>
         <label className="space-y-1 text-sm text-slate-700">
           Water quality
-          <select value={waterQuality} onChange={(event) => setWaterQuality(event.target.value)} className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3">
+          <select value={waterQuality} onChange={(event) => setWaterQuality(event.target.value as FieldWaterQuality)} className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3">
             <option value="good">Good</option>
             <option value="saline">Saline</option>
             <option value="unknown">Unknown</option>

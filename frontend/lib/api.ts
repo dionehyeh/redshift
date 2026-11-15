@@ -1,63 +1,43 @@
 import { getMockResponse } from "./mock-data";
+import { ApiError, apiErrorFromResponse, jsonFromResponse } from "./api-error";
 
-export class ApiError extends Error {
-  constructor(
-    public status: number,
-    public code: string,
-    message: string,
-    public details?: Record<string, unknown>
-  ) {
-    super(message);
-    this.name = "ApiError";
-  }
-}
+export { ApiError } from "./api-error";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL ||
-  process.env.API_BASE_URL ||
-  "http://localhost:8000";
+const USE_MOCK_API = process.env.NEXT_PUBLIC_USE_MOCK_API === "true";
 
 /**
- * Direct client-to-FastAPI fetch client with development mock fallback.
+ * Browser requests use the same-origin Next.js proxy so backend credentials
+ * and the Clerk session token stay server-side.
  */
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-  let token: string | null = null;
-  if (typeof window !== "undefined" && (window as any).Clerk?.session) {
-    try {
-      token = await (window as any).Clerk.session.getToken();
-    } catch {
-      token = null;
-    }
-  }
-
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  const targetUrl = `${API_BASE}/api/v1${normalizedPath}`;
+  const method = (init.method || "GET").toUpperCase();
+  const headers = new Headers(init.headers);
+  if (!headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
 
+  let response: Response;
   try {
-    const res = await fetch(targetUrl, {
+    response = await fetch(`/api/v1${normalizedPath}`, {
       ...init,
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(init.headers ?? {}),
-      },
+      headers,
     });
-
-    if (res.ok) {
-      return (await res.json()) as T;
-    }
   } catch {
-    // When backend is not running during frontend development, seamlessly return mock data
-    const mock = getMockResponse<T>(normalizedPath);
-    if (mock !== null) {
-      return mock;
+    if (method === "GET" && USE_MOCK_API) {
+      const mock = getMockResponse<T>(normalizedPath);
+      if (mock !== null) return mock;
     }
+
+    throw new ApiError(
+      0,
+      "NETWORK_ERROR",
+      `Could not connect to the backend for ${normalizedPath}`
+    );
   }
 
-  const mockFallback = getMockResponse<T>(normalizedPath);
-  if (mockFallback !== null) {
-    return mockFallback;
+  if (!response.ok) {
+    throw await apiErrorFromResponse(response);
   }
-
-  throw new ApiError(500, "DATA_UNAVAILABLE", `Failed to fetch ${normalizedPath}`);
+  return jsonFromResponse<T>(response);
 }

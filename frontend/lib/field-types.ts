@@ -1,6 +1,8 @@
 import type { FeatureCollection, GeoJsonProperties, Geometry } from "geojson";
 
 export type FieldProfileStatus = "pending" | "building" | "ready" | "failed";
+export type FieldWaterSource = "rainfed" | "borewell" | "canal" | "unknown";
+export type FieldWaterQuality = "good" | "saline" | "unknown";
 
 export interface FieldListItem {
   id: number;
@@ -10,8 +12,8 @@ export interface FieldListItem {
   area_ha: number | null;
   profile_status: FieldProfileStatus;
   climate_cell_id: string | null;
-  water_source: string;
-  water_quality?: string;
+  water_source: FieldWaterSource;
+  water_quality: FieldWaterQuality;
   created_at: string;
 }
 
@@ -26,10 +28,37 @@ export interface FieldCreateResponse {
   status: "queued";
 }
 
+export interface FieldCreateRequest {
+  name: string;
+  lat: number;
+  lon: number;
+  area_ha?: number;
+  water_source: FieldWaterSource;
+  water_quality: FieldWaterQuality;
+  boundary_geojson?: string;
+}
+
 export interface FieldPatchResponse {
   status: "updated" | "queued";
   field_id: number;
   job_id: string | null;
+}
+
+export interface FieldCorrection {
+  key: "soil_ph" | "soil_oc" | "soil_texture";
+  value: number | string;
+  note?: string;
+}
+
+export interface FieldPatchRequest {
+  name?: string;
+  lat?: number;
+  lon?: number;
+  area_ha?: number;
+  water_source?: FieldWaterSource;
+  water_quality?: FieldWaterQuality;
+  boundary_geojson?: string;
+  corrections?: FieldCorrection[];
 }
 
 export interface FieldMetric {
@@ -37,6 +66,7 @@ export interface FieldMetric {
   source: string;
   resolution: string | null;
   confidence: string;
+  estimate?: Record<string, unknown>;
 }
 
 export interface FieldProfile {
@@ -46,10 +76,11 @@ export interface FieldProfile {
   lat: number;
   lon: number;
   area_ha: number | null;
-  water_source: string;
-  water_quality: string;
+  water_source: FieldWaterSource;
+  water_quality: FieldWaterQuality;
   profile_status: FieldProfileStatus;
   profile: Record<string, FieldMetric>;
+  gaps: string[];
   climate_cell_id: string | null;
   created_at: string;
 }

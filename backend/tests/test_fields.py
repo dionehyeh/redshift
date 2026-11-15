@@ -77,6 +77,7 @@ class FakeConnection:
                         "profile_status": FIELD["profile_status"],
                         "climate_cell_id": FIELD["climate_cell_id"],
                         "water_source": FIELD["water_source"],
+                        "water_quality": FIELD["water_quality"],
                         "created_at": FIELD["created_at"],
                     }
                 ]
@@ -186,6 +187,7 @@ def test_field_list_returns_profile_readiness(field_client):
     assert response.status_code == 200
     assert response.json()["total"] == 1
     assert response.json()["items"][0]["profile_status"] == "ready"
+    assert response.json()["items"][0]["water_quality"] == "good"
 
 
 def test_field_profile_and_feasible_crop_groups(field_client):
