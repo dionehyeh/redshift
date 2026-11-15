@@ -20,9 +20,6 @@ def _read_bool_env(name: str, default: bool = False) -> bool:
 
 
 class Settings(BaseModel):
-    demo_mode: bool = (
-        os.getenv("DEMO_MODE", "").strip().lower() in {"1", "true", "yes"}
-    )
     database_url: str = os.getenv("DATABASE_URL", "")
     demo_mode: bool = _read_bool_env("DEMO_MODE")
     clerk_secret_key: str = os.getenv("CLERK_SECRET_KEY", "")

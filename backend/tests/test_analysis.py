@@ -192,11 +192,10 @@ def test_unavailable_ndvi_is_reported_as_a_gap_not_a_cloud_detection():
         [0.0, 0.0],
         [0.0, 0.0],
         [30.0, 30.0],
-        [np.nan, np.nan],
-        [np.nan, np.nan],
+        None,
+        None,
         crop,
         {},
-        ndvi_data_available=False,
     )
     assert findings == []
-    assert gaps == ["NDVI observations are unavailable for this period"]
+    assert gaps == ["NDVI observations are unavailable for this season"]
