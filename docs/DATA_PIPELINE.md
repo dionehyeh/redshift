@@ -89,3 +89,20 @@ $$\text{Available Water} = \text{Effective Rainfall} + \text{Stored Soil Water}$
   1. Direct answer: `"wet"` ($100\% = 150\text{ mm}$), `"moist"` ($50\% = 75\text{ mm}$), `"dry"` ($0\% = 0\text{ mm}$).
   2. Satellite soil moisture (SMAP/GLDAS) scaled between wilting point ($0.10$) and field capacity ($0.35$).
   3. Default fallback: $30\%$ capacity ($45\text{ mm}$) labeled with **Low Confidence**.
+
+---
+
+## 6. Backend Data Availability
+
+- NASA POWER daily precipitation and temperature are pulled for a snapped 0.5° cell,
+  harmonized, and cached as daily and ISO-weekly Parquet series. Normals are computed
+  from that series; cached Parquet files are preferred on subsequent requests.
+- `DEMO_MODE=1` is strictly cache-only. Missing cached data is reported as unavailable;
+  it does not substitute synthetic observations or climatology.
+- Season diagnoses use the observed POWER series and the corresponding weekly normals.
+  Until an NDVI series is available, the analysis reports an NDVI data gap rather than
+  creating a cloud-gap or vegetation-stress finding.
+- POWER precipitation is a coarse fallback, not IMERG. IMERG, MODIS extraction,
+  SRTM-derived terrain, SoilGrids retrieval, and SMAP/GLDAS soil-moisture ingestion
+  still require provider adapters and credentials/configuration before those sources can
+  be presented as live data.

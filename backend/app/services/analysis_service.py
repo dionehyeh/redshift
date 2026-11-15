@@ -1,67 +1,206 @@
+"""Season analysis orchestration using cached and observed climate data."""
+
+import logging
+
+import numpy as np
+import pandas as pd
+
+from app.analysis.core import (
+    anomalies,
+    build_findings,
+    likely_causes,
+    to_weekly,
+    weekly_normals,
+)
 from app.db import get_db
-from app.jobs import update_job_step, complete_job, fail_job
-from app.analysis.core import build_findings, likely_causes
 from app.engine.scoring import load_crops
+from app.jobs import complete_job, fail_job, update_job_step
+from app.services.climate_service import grid_cell_id, load_cell_daily, load_cell_weekly
+
+logger = logging.getLogger(__name__)
+
+
+def _column_values(frame: pd.DataFrame, column: str, length: int) -> np.ndarray:
+    if column not in frame.columns:
+        return np.full(length, np.nan)
+    return frame[column].to_numpy(dtype=float)
+
 
 def analyze_season_task(job_id: str, season_id: int) -> None:
     try:
         update_job_step(job_id, "loading_season", 20)
         with get_db() as conn:
-            season = dict(conn.execute("SELECT * FROM seasons WHERE id = ?", (season_id,)).fetchone())
-            crop_name = season["crop_id"]
-            if isinstance(crop_name, int):
-                row = conn.execute("SELECT name FROM crops WHERE id = ?", (crop_name,)).fetchone()
-                crop_name = row["name"] if row else "paddy"
-            else:
-                crop_name = crop_name or "paddy"
+            row = conn.execute(
+                """SELECT s.*, c.name AS crop_name, f.lat, f.lon, f.climate_cell_id
+                   FROM seasons s
+                   JOIN fields f ON f.id = s.field_id
+                   LEFT JOIN crops c ON c.id = s.crop_id
+                   WHERE s.id = ?""",
+                (season_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"Season {season_id} does not exist")
+            season = dict(row)
+
+        if not season.get("start_date"):
+            raise ValueError(f"Season {season_id} has no start date")
+        crop_name = season.get("crop_name") or "paddy"
+        crops = {crop["name"]: crop for crop in load_crops()}
+        if crop_name not in crops:
+            raise ValueError(f"Crop {crop_name!r} is not in the analysis catalog")
+        crop = crops[crop_name]
+
+        start = pd.Timestamp(season["start_date"]).normalize()
+        end = (
+            pd.Timestamp(season["end_date"]).normalize()
+            if season.get("end_date")
+            else start + pd.Timedelta(days=crop["duration_days"] - 1)
+        )
+        if end < start:
+            raise ValueError("Season end date must not precede its start date")
+
+        cell_id = season.get("climate_cell_id") or grid_cell_id(
+            float(season["lat"]), float(season["lon"])
+        )
+        daily = load_cell_daily(cell_id)
+        season_daily = daily.loc[start:end]
+        if season_daily.empty:
+            raise ValueError(
+                f"No cached NASA POWER observations are available for season {season_id}"
+            )
 
         update_job_step(job_id, "calculating_anomalies", 50)
-        crops = {c["name"]: c for c in load_crops()}
-        target_crop = crops.get(crop_name, crops["paddy"])
+        history_weekly = load_cell_weekly(cell_id)
+        available_columns = [
+            column for column in ("rain_mm", "tmean", "tmax") if column in history_weekly
+        ]
+        if "ndvi" in history_weekly:
+            available_columns.append("ndvi")
+        if not available_columns:
+            raise ValueError(f"No supported climate observations are available for {cell_id}")
+        normals = weekly_normals(history_weekly, available_columns)
 
-        # Simulated or fixture season series for demo field
-        season_weeks = list(range(1, 16))
-        rain_z = [-0.2, -0.4, -0.1, -1.2, -1.5, -1.4, -0.8, -0.3, -0.1, 0.2, 0.1, -0.2, -0.3, -0.1, 0.0]
-        rain_pct = [-10, -20, -5, -42, -55, -48, -25, -10, -5, 10, 5, -8, -12, -4, 0]
-        tmax = [32.0, 32.5, 33.0, 33.5, 34.0, 34.5, 33.8, 33.0, 32.5, 32.0, 31.5, 31.0, 31.0, 31.5, 32.0]
-        ndvi = [0.28, 0.35, 0.45, 0.52, 0.58, 0.62, 0.60, 0.55, None, None, 0.50, 0.48, 0.42, 0.35, 0.25]
-        ndvi_z = [-0.1, 0.0, 0.1, 0.2, 0.1, -0.2, -0.8, -1.3, np_nan_placeholder := 0.0, 0.0, -0.9, -0.7, -0.5, -0.2, 0.0]
+        season_weekly = to_weekly(season_daily)
+        season_length = len(season_weekly)
+        season_weeks = list(range(1, season_length + 1))
+        rain_anomalies = (
+            anomalies(season_weekly, normals, "rain_mm")
+            if "rain_mm" in available_columns
+            else pd.DataFrame(index=season_weekly.index)
+        )
+        rain_z = _column_values(rain_anomalies, "z", season_length)
+        rain_pct = _column_values(rain_anomalies, "pct", season_length)
+        tmax = _column_values(season_weekly, "tmax", season_length)
 
+        ndvi_series = (
+            history_weekly["ndvi"].reindex(season_weekly.index)
+            if "ndvi" in available_columns
+            else pd.Series(np.nan, index=season_weekly.index)
+        )
+        has_ndvi = bool(ndvi_series.notna().any())
+        ndvi = ndvi_series.to_numpy(dtype=float)
+        ndvi_normals = (
+            anomalies(
+                pd.DataFrame({"ndvi": ndvi}, index=season_weekly.index),
+                normals,
+                "ndvi",
+            )["z"].to_numpy(dtype=float)
+            if has_ndvi
+            else np.full(season_length, np.nan)
+        )
+        ndvi_z = ndvi_normals
         source_meta = {
-            "rain_deficit": {"source": "GPM IMERG", "resolution": "~10 km", "confidence": "medium"},
-            "heat": {"source": "NASA POWER", "resolution": "~50 km", "confidence": "high"},
-            "ndvi_dip": {"source": "MODIS (MOD13Q1)", "resolution": "250 m", "confidence": "medium"},
+            "rain_deficit": {
+                "source": "NASA POWER precipitation",
+                "resolution": "~50 km (coarse fallback)",
+                "confidence": "medium",
+            },
+            "heat": {
+                "source": "NASA POWER",
+                "resolution": "~50 km",
+                "confidence": "high",
+            },
         }
+        if has_ndvi:
+            source_meta["ndvi_dip"] = {
+                "source": "MODIS vegetation index",
+                "resolution": "~250 m",
+                "confidence": "medium",
+            }
+            source_meta["cloud_gap"] = source_meta["ndvi_dip"]
+            source_meta["bare_field"] = source_meta["ndvi_dip"]
 
         update_job_step(job_id, "synthesizing_stress_flags", 80)
-        findings, gaps = build_findings(season_weeks, rain_z, rain_pct, tmax, ndvi, ndvi_z, target_crop, source_meta)
+        findings, gaps = build_findings(
+            season_weeks,
+            rain_z.tolist(),
+            rain_pct.tolist(),
+            tmax.tolist(),
+            ndvi.tolist(),
+            ndvi_z.tolist(),
+            crop,
+            source_meta,
+            ndvi_data_available=bool(has_ndvi),
+        )
         causes_info = likely_causes(findings, season.get("suspected_cause"))
-
         with get_db() as conn:
-            for f in findings:
-                text_plain = f"Rainfall deficit of {f.get('deviation')} detected in weeks {f['weeks'][0]} to {f['weeks'][1]}."
+            conn.execute("DELETE FROM findings WHERE season_id = ?", (season_id,))
+            for finding in findings:
+                deviation = finding.get("deviation_value")
+                text_plain = (
+                    f"{finding['kind'].replace('_', ' ').capitalize()} "
+                    f"detected in weeks {finding['weeks'][0]} to {finding['weeks'][1]}: "
+                    f"{finding.get('deviation', 'threshold exceeded')}."
+                )
                 conn.execute(
-                    """INSERT INTO findings (season_id, kind, week_from, week_to, deviation, unit, crop_stage, severity, confidence, source, resolution, text_plain, explainer_key)
-                       VALUES (?, ?, ?, ?, ?, '%', ?, ?, ?, ?, ?, ?, ?)""",
+                    """INSERT INTO findings (
+                           season_id, kind, week_from, week_to, deviation, unit,
+                           crop_stage, severity, confidence, source, resolution,
+                           text_plain, explainer_key
+                       )
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         season_id,
-                        f["kind"],
-                        f["weeks"][0],
-                        f["weeks"][1],
-                        float(str(f.get("deviation", "0")).replace("%", "")),
-                        f["crop_stage"],
-                        str(f["severity"]),
-                        f["confidence"],
-                        f["source"],
-                        f["resolution"],
+                        finding["kind"],
+                        finding["weeks"][0],
+                        finding["weeks"][1],
+                        deviation,
+                        finding.get("unit"),
+                        finding["crop_stage"],
+                        str(finding["severity"]),
+                        finding["confidence"],
+                        finding["source"],
+                        finding["resolution"],
                         text_plain,
-                        "rainfall_anomaly" if f["kind"] == "rain_deficit" else "ndvi",
+                        {
+                            "rain_deficit": "rainfall_anomaly",
+                            "heat": "heat",
+                            "ndvi_dip": "ndvi",
+                            "cloud_gap": "ndvi",
+                            "bare_field": "ndvi",
+                        }.get(finding["kind"], "data_gap"),
                     ),
                 )
             if causes_info["suspected"]:
-                top_cause = causes_info["suspected"][0]["cause"]
-                conn.execute("UPDATE seasons SET suspected_cause = ? WHERE id = ?", (top_cause, season_id))
+                conn.execute(
+                    "UPDATE seasons SET suspected_cause = ? WHERE id = ?",
+                    (causes_info["suspected"][0]["cause"], season_id),
+                )
 
-        complete_job(job_id, "done", {"season_id": season_id, "findings_count": len(findings)})
+        complete_job(
+            job_id,
+            "done_with_gaps" if gaps else "done",
+            {
+                "season_id": season_id,
+                "findings_count": len(findings),
+                "gaps": gaps,
+                "climate_cell_id": cell_id,
+                "climate_years": [
+                    int(history_weekly.index.get_level_values("year").min()),
+                    int(history_weekly.index.get_level_values("year").max()),
+                ],
+            },
+        )
     except Exception as exc:
+        logger.exception("Season analysis failed for season %s", season_id)
         fail_job(job_id, str(exc))

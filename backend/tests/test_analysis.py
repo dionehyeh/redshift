@@ -1,21 +1,22 @@
 import numpy as np
 import pandas as pd
+
 from app.analysis.core import (
-    clean_daily,
-    to_weekly,
-    weekly_normals,
     anomalies,
+    build_findings,
+    clean_daily,
+    lowest,
+    relative_elevation,
     runs,
-    rain_deficit_runs,
+    slope_percent,
     stage_calendar,
     stage_of,
-    build_findings,
-    water_outlook,
     stored_soil_water,
-    lowest,
-    slope_percent,
-    relative_elevation,
+    to_weekly,
+    water_outlook,
+    weekly_normals,
 )
+
 
 def test_clean_daily_handles_missing():
     df = pd.DataFrame({"rain_mm": [-999, 15.0, -10.0], "t2m": [-9999, 28.5, 30.0]})
@@ -56,6 +57,17 @@ def test_weekly_normals_obey_minimum_year_count_and_fill_circularly():
     assert not np.isnan(thin_normals.loc[10, ("rain_mm", "count")])
     assert np.isnan(thin_normals.loc[10, ("rain_mm", "mean")])
 
+def test_weekly_normals_interpolate_thin_weeks_across_year_boundary():
+    rows = []
+    for year in range(2000, 2010):
+        for week in range(1, 53):
+            if week != 1 or year != 2000:
+                rows.append((year, week, float(week)))
+    frame = pd.DataFrame(rows, columns=["year", "week", "rain_mm"]).set_index(["year", "week"])
+    normals = weekly_normals(frame, ["rain_mm"])
+    assert normals.loc[1, ("rain_mm", "count")] == 9
+    assert normals.loc[1, ("rain_mm", "mean")] == 27.0
+
 def test_anomalies_apply_minimum_standard_deviation_floor():
     index = pd.MultiIndex.from_tuples([(2024, 1)], names=["year", "week"])
     week = pd.DataFrame({"rain_mm": [15.0]}, index=index)
@@ -87,15 +99,24 @@ def test_stored_soil_water_hierarchy():
 
     # Satellite fallback
     val_sat, conf_sat, _ = stored_soil_water(answer=None, sm_vol=0.25)
+    assert val_sat == 90.0
     assert conf_sat == "medium"
 
     # Default fallback
     val_def, conf_def, _ = stored_soil_water(answer=None, sm_vol=None)
+    assert val_def == 45.0
     assert conf_def == "low"
 
 def test_lowest_confidence():
     assert lowest("high", "medium", "low") == "low"
     assert lowest("high", "high", "medium") == "medium"
+
+def test_water_outlook_wraps_at_year_end_and_applies_factor_range():
+    outlook = water_outlook([10.0] * 52, 52, 2, (0.8, 0.95))
+    assert outlook["low_mm"] == 16
+    assert outlook["high_mm"] == 19
+    assert outlook["mid_mm"] == 18
+    assert outlook["confidence"] == "medium"
 
 def test_findings_include_nan_gaps_and_bare_field_runs_with_calendar_weeks():
     crop = {
@@ -127,3 +148,19 @@ def test_terrain_calculations_validate_dem_and_return_expected_values():
     assert relative_elevation(dem) == 2.0
     with np.testing.assert_raises(ValueError):
         slope_percent(np.ones((2, 2)))
+
+def test_unavailable_ndvi_is_reported_as_a_gap_not_a_cloud_detection():
+    crop = {"duration_days": 70, "flower_frac": (0.4, 0.6), "t_flower_max": 35}
+    findings, gaps = build_findings(
+        [1, 2],
+        [0.0, 0.0],
+        [0.0, 0.0],
+        [30.0, 30.0],
+        [np.nan, np.nan],
+        [np.nan, np.nan],
+        crop,
+        {},
+        ndvi_data_available=False,
+    )
+    assert findings == []
+    assert gaps == ["NDVI observations are unavailable for this period"]

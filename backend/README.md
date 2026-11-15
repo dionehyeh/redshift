@@ -33,7 +33,7 @@ backend/
 ├── migrations/                 # Incremental SQL migration scripts
 ├── scripts/
 │   ├── seed_demo.py            # Seeds the crop catalog (no demo passwords)
-│   ├── pull_cell.py            # Pre-pulls climatological cell from NASA
+│   ├── pull_cell.py            # Pulls and caches NASA POWER cell history
 │   ├── check_env.py            # Environment validation script
 │   └── smoke.sh                # End-to-end API smoke test
 ├── tests/                      # Pytest unit & integration test suites
@@ -67,3 +67,12 @@ role; set trusted roles through Clerk `public_metadata` before the user's first 
 ```bash
 pytest tests/
 ```
+
+### Pre-cache a climate cell
+```bash
+python scripts/pull_cell.py --lat 9.5 --lon 76.4 --years 20
+```
+
+The script writes daily, ISO-weekly, and 52-week normal Parquet files under `CACHE_DIR`.
+Use `--refresh` to fetch the daily series again. In `DEMO_MODE=1`, only existing cached
+series are used; a cache miss is reported instead of generating synthetic observations.

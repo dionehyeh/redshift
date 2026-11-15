@@ -1,15 +1,17 @@
-from fastapi import APIRouter, Depends, BackgroundTasks
+import json
+
+from fastapi import APIRouter, BackgroundTasks, Depends
+
+from app.db import get_db
+from app.deps import current_user, own_field, require_role
+from app.errors import AppError
+from app.jobs import create_job
 from app.schemas.seasons import (
+    FindingReviewRequest,
     SeasonCreateRequest,
     SeasonPatchRequest,
-    FindingReviewRequest,
-    SeasonAnalysisResponse,
 )
-from app.deps import current_user, require_role, own_field
-from app.db import get_db
-from app.jobs import create_job
 from app.services.analysis_service import analyze_season_task
-from app.errors import AppError
 
 router = APIRouter(tags=["Seasons & Diagnosis"])
 
@@ -69,15 +71,34 @@ def get_season_analysis(id: int, user: dict = Depends(current_user)):
         if not season:
             raise AppError("NOT_FOUND", "Season not found", status=404)
         findings_rows = conn.execute("SELECT * FROM findings WHERE season_id = ?", (id,)).fetchall()
+        job_row = conn.execute(
+            """SELECT result_json FROM jobs
+               WHERE kind = 'season_analysis' AND target_id = ?
+               ORDER BY created_at DESC LIMIT 1""",
+            (id,),
+        ).fetchone()
+        analysis_result = (
+            json.loads(job_row["result_json"])
+            if job_row and job_row.get("result_json")
+            else {}
+        )
         
         findings_list = []
         for r in findings_rows:
+            deviation = r["deviation"]
+            unit = r["unit"] or ""
+            if deviation is None:
+                deviation_text = ""
+            elif unit == "C":
+                deviation_text = f"{float(deviation):+.1f} {unit}"
+            else:
+                deviation_text = f"{float(deviation):.0f}{unit}"
             findings_list.append({
                 "id": r["id"],
                 "kind": r["kind"],
                 "weeks": [r["week_from"], r["week_to"]],
-                "deviation": f"{r['deviation']}%",
-                "unit": r["unit"],
+                "deviation": deviation_text,
+                "unit": unit,
                 "crop_stage": r["crop_stage"],
                 "severity": r["severity"],
                 "confidence": r["confidence"],
@@ -91,11 +112,18 @@ def get_season_analysis(id: int, user: dict = Depends(current_user)):
         return {
             "season_id": id,
             "approval_status": season["approval_status"],
-            "comparison_years": "2005-2025 (20-year climatology)",
+            "comparison_years": (
+                f"{analysis_result['climate_years'][0]}-"
+                f"{analysis_result['climate_years'][1]} (20-year climatology)"
+                if analysis_result.get("climate_years")
+                else "20-year climatology"
+            ),
             "findings": findings_list,
             "gaps": [
+                *analysis_result.get(
+                    "gaps", ["NDVI observations are unavailable for this period"]
+                ),
                 "Pests and diseases cannot be detected from satellite imagery",
-                "Cloud cover prevented optical NDVI imaging in weeks 8 to 9",
             ],
             "followup_question": "Did you observe insect attack or water stagnation in the field?",
         }
