@@ -39,8 +39,10 @@ def grid_cell_id(lat: float, lon: float, resolution: float = 0.5) -> str:
     """Return a stable geographic cell ID for a point and grid resolution."""
     if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
         raise ValueError("latitude or longitude is out of range")
-    if resolution <= 0 or not pd.notna(resolution):
+    if not math.isfinite(resolution) or resolution <= 0:
         raise ValueError("resolution must be a positive finite number")
+    if not math.isclose(resolution * 10, round(resolution * 10)):
+        raise ValueError("resolution must be representable to one decimal place")
 
     cell_lat = _snap(lat, resolution)
     cell_lon = _snap(lon, resolution)
@@ -50,7 +52,8 @@ def grid_cell_id(lat: float, lon: float, resolution: float = 0.5) -> str:
 
 
 def _snap(coordinate: float, resolution: float) -> float:
-    return round((coordinate / resolution + 0.5) // 1 * resolution, 4)
+    cells = math.floor(abs(coordinate) / resolution + 0.5)
+    return math.copysign(round(cells * resolution, 4), coordinate)
 
 
 def cell_coordinates(cell_id: str) -> tuple[float, float]:
@@ -58,10 +61,11 @@ def cell_coordinates(cell_id: str) -> tuple[float, float]:
     if not match:
         raise ValueError("Invalid climate cell ID")
     lat, lat_hem, lon, lon_hem = match.groups()
-    return (
-        float(lat) * (1 if lat_hem == "N" else -1),
-        float(lon) * (1 if lon_hem == "E" else -1),
-    )
+    latitude = float(lat) * (1 if lat_hem == "N" else -1)
+    longitude = float(lon) * (1 if lon_hem == "E" else -1)
+    if not (-90 <= latitude <= 90) or not (-180 <= longitude <= 180):
+        raise ValueError("Climate cell coordinates are out of range")
+    return latitude, longitude
 
 
 def get_cell_path(cell_id: str, kind: str = "normals") -> str:
@@ -170,14 +174,24 @@ def load_cell_daily(
     if years < 1:
         raise ValueError("years must be positive")
     path = get_cell_path(cell_id, "daily")
-    if os.path.exists(path) and not refresh:
-        cached = _read_parquet(path)
-        if not cached.empty:
-            return clean_daily(cached)
-
-    lat, lon = cell_coordinates(cell_id)
     end_date = date.today() - timedelta(days=1)
     start_date = end_date.replace(year=end_date.year - years)
+    if os.path.exists(path) and not refresh:
+        cached = _read_parquet(path)
+        cache_start = pd.Timestamp(start_date)
+        cache_end = pd.Timestamp(end_date - timedelta(days=30))
+        if (
+            not cached.empty
+            and cached.index.min() <= cache_start
+            and cached.index.max() >= cache_end
+        ):
+            return clean_daily(cached)
+    if settings.demo_mode:
+        raise ClimateDataUnavailable(
+            f"No cached daily climate series is available for {cell_id} in demo mode"
+        )
+
+    lat, lon = cell_coordinates(cell_id)
     daily = fetch_power_daily(lat, lon, start_date, end_date)
     if daily.empty:
         raise RuntimeError(f"NASA POWER returned no daily observations for {cell_id}")

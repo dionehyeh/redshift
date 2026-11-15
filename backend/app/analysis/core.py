@@ -164,6 +164,7 @@ def build_findings(
     ndvi_z: list[float | None] | None,
     crop: dict,
     source_meta: dict,
+    ndvi_data_available: bool = True,
 ) -> tuple[list[dict], list[str]]:
     cal = stage_calendar(crop["duration_days"], crop["flower_frac"])
     findings = []
@@ -208,7 +209,11 @@ def build_findings(
             r,
             "finding.rain_deficit",
             float(abs(np.mean(arrays["rain_z"][r[0] : r[1] + 1]))),
-            {"deviation": f"{np.mean(sub_pct):.0f}%"},
+            {
+                "deviation": f"{np.mean(sub_pct):.0f}%",
+                "deviation_value": float(np.nanmean(sub_pct)),
+                "unit": "%",
+            },
         )
     flowering = next(stage for stage in cal if stage[0] == "flowering")
     safe_tmax = np.where(
@@ -310,9 +315,16 @@ def water_outlook(
     if season_to_date_pct is not None and not np.isfinite(season_to_date_pct):
         raise ValueError("season_to_date_pct must be finite")
     idx = [(start_week - 1 + i) % 52 for i in range(n_weeks)]
-    base = float(sum(normal_rain[i] for i in idx))
+    selected_rain = np.asarray([normal_rain[i] for i in idx], dtype=float)
+    if not np.isfinite(selected_rain).all():
+        raise ValueError("selected rainfall normals must be finite")
+    base = float(selected_rain.sum())
     lo, hi = imd_factor_range or (0.85, 1.15)
+    if not np.isfinite([lo, hi]).all() or lo < 0 or hi < lo:
+        raise ValueError("IMD outlook factors must be finite, non-negative, and ordered")
     if season_to_date_pct is not None and not imd_factor_range:
+        if not np.isfinite(season_to_date_pct):
+            raise ValueError("season_to_date_pct must be finite")
         shift = max(-0.15, min(0.15, season_to_date_pct / 100.0 * 0.5))
         lo += shift
         hi += shift
