@@ -5,16 +5,23 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, MapPin, Droplets, Mountain, Sprout, Plus } from "lucide-react";
 import { api } from "@/lib/api";
-import type { FieldCreateResponse } from "@/lib/field-types";
+import type {
+  FieldCreateRequest,
+  FieldCreateResponse,
+  FieldWaterQuality,
+  FieldWaterSource,
+} from "@/lib/field-types";
 
 export default function NewFieldPage() {
   const router = useRouter();
   const [name, setName] = useState("");
-  const [lat, setLat] = useState(9.5833);
-  const [lon, setLon] = useState(76.5167);
-  const [areaHa, setAreaHa] = useState("1.2");
-  const [waterSource, setWaterSource] = useState("canal");
-  const [waterQuality, setWaterQuality] = useState("good");
+  const [lat, setLat] = useState("");
+  const [lon, setLon] = useState("");
+  const [areaHa, setAreaHa] = useState("");
+  const [waterSource, setWaterSource] =
+    useState<FieldCreateRequest["water_source"]>("unknown");
+  const [waterQuality, setWaterQuality] =
+    useState<FieldCreateRequest["water_quality"]>("unknown");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -24,22 +31,25 @@ export default function NewFieldPage() {
     setError("");
 
     try {
+      const request: FieldCreateRequest = {
+        name: name.trim(),
+        lat: Number(lat),
+        lon: Number(lon),
+        ...(areaHa.trim() ? { area_ha: Number(areaHa) } : {}),
+        water_source: waterSource,
+        water_quality: waterQuality,
+      };
       const data = await api<FieldCreateResponse>("/fields", {
         method: "POST",
-        body: JSON.stringify({
-          name,
-          lat: Number(lat),
-          lon: Number(lon),
-          area_ha: areaHa ? Number(areaHa) : null,
-          water_source: waterSource,
-          water_quality: waterQuality,
-        }),
+        body: JSON.stringify(request),
       });
 
-      const targetId = data.field_id || 1;
-      const jobQuery = data.job_id ? `?job_id=${encodeURIComponent(data.job_id)}` : "";
-      router.push(`/fields/${targetId}${jobQuery}`);
-    } catch (err: any) {
+      if (!Number.isSafeInteger(data.field_id) || data.field_id <= 0 || !data.job_id) {
+        throw new Error("The backend returned an invalid field creation response");
+      }
+      const jobQuery = `?job_id=${encodeURIComponent(data.job_id)}`;
+      router.push(`/fields/${data.field_id}${jobQuery}`);
+    } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to create field plot");
     } finally {
       setLoading(false);
@@ -67,7 +77,7 @@ export default function NewFieldPage() {
           Add Agricultural Plot
         </h1>
         <p className="text-stone-600 text-sm">
-          Set coordinates to extract 20+ years of NASA Earth observations (POWER radiation, IMD rainfall, SRTM topography) for this location.
+          Set the plot coordinates to load NASA POWER climate history and available MODIS, GPM IMERG, SRTM, and SoilGrids data.
         </p>
       </div>
 
@@ -97,27 +107,31 @@ export default function NewFieldPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <label className="text-sm font-bold text-stone-800 flex items-center gap-1.5">
-              <MapPin className="w-4 h-4 text-green-700" /> Latitude (°N)
+              <MapPin className="w-4 h-4 text-green-700" /> Latitude (decimal degrees)
             </label>
             <input
               type="number"
+              min="-90"
+              max="90"
               step="0.0001"
               required
               value={lat}
-              onChange={(e) => setLat(Number(e.target.value))}
+              onChange={(e) => setLat(e.target.value)}
               className="w-full h-12 px-4 border-2 border-stone-200 rounded-xl focus:border-green-600 focus:ring-2 focus:ring-green-600/20 focus:outline-none font-mono text-stone-900 text-sm transition"
             />
           </div>
           <div className="space-y-1.5">
             <label className="text-sm font-bold text-stone-800 flex items-center gap-1.5">
-              <MapPin className="w-4 h-4 text-green-700" /> Longitude (°E)
+              <MapPin className="w-4 h-4 text-green-700" /> Longitude (decimal degrees)
             </label>
             <input
               type="number"
+              min="-180"
+              max="180"
               step="0.0001"
               required
               value={lon}
-              onChange={(e) => setLon(Number(e.target.value))}
+              onChange={(e) => setLon(e.target.value)}
               className="w-full h-12 px-4 border-2 border-stone-200 rounded-xl focus:border-green-600 focus:ring-2 focus:ring-green-600/20 focus:outline-none font-mono text-stone-900 text-sm transition"
             />
           </div>
@@ -144,7 +158,7 @@ export default function NewFieldPage() {
             </label>
             <select
               value={waterSource}
-              onChange={(e) => setWaterSource(e.target.value)}
+              onChange={(e) => setWaterSource(e.target.value as FieldWaterSource)}
               className="w-full h-12 px-4 border-2 border-stone-200 rounded-xl bg-white focus:border-green-600 focus:ring-2 focus:ring-green-600/20 focus:outline-none font-medium text-stone-800 text-sm transition"
             >
               <option value="canal">Canal Irrigation</option>
@@ -157,7 +171,7 @@ export default function NewFieldPage() {
             <label className="text-sm font-bold text-stone-800">Water Quality</label>
             <select
               value={waterQuality}
-              onChange={(e) => setWaterQuality(e.target.value)}
+              onChange={(e) => setWaterQuality(e.target.value as FieldWaterQuality)}
               className="w-full h-12 px-4 border-2 border-stone-200 rounded-xl bg-white focus:border-green-600 focus:ring-2 focus:ring-green-600/20 focus:outline-none font-medium text-stone-800 text-sm transition"
             >
               <option value="good">Good Fresh Water</option>

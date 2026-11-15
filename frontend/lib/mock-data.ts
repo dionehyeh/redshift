@@ -99,7 +99,13 @@ export function getMockResponse<T>(path: string): T | null {
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
 
   if (cleanPath === "/fields" || cleanPath === "/fields/") {
-    return { items: MOCK_FIELDS, next_cursor: null } as unknown as T;
+    return {
+      items: MOCK_FIELDS.map(({ farmer_id, ...field }) => ({
+        ...field,
+        climate_cell_id: null,
+      })),
+      total: MOCK_FIELDS.length,
+    } as unknown as T;
   }
 
   if (cleanPath === "/me" || cleanPath === "/me/prefs") {
@@ -109,9 +115,12 @@ export function getMockResponse<T>(path: string): T | null {
   const fieldMatch = cleanPath.match(/^\/fields\/(\d+)$/);
   if (fieldMatch) {
     const id = parseInt(fieldMatch[1], 10);
-    const field = MOCK_FIELDS.find((f) => f.id === id) || MOCK_FIELDS[0];
+    const field = MOCK_FIELDS.find((f) => f.id === id);
+    if (!field) return null;
     return {
       ...field,
+      gaps: [],
+      climate_cell_id: null,
       profile: {
         elevation_m: { value: 4.0, source: "SRTM GL1", resolution: "30 m", confidence: "high" },
         flood_prone: { value: true, source: "SRTM + Historical Rain", confidence: "medium" },
@@ -124,36 +133,93 @@ export function getMockResponse<T>(path: string): T | null {
   }
 
   if (cleanPath.includes("/feasible-crops")) {
+    const fieldId = Number(cleanPath.match(/^\/fields\/(\d+)\//)?.[1]);
+    const crops = [
+      { crop_id: 1, crop_name: "Paddy (Uma)", name_ml: "ഉമ നെല്ല്", family: "grass", water_need: "high", class: "suitable", reason: "Ideal for low elevation wetland soil", start_windows: ["W22", "W23"], duration_days: 130, computed_at: null },
+      { crop_id: 2, crop_name: "Cowpea", name_ml: "പയർ", family: "legume", water_need: "low", class: "suitable", reason: "Nitrogen-fixing pulse suited for summer residual moisture", start_windows: ["W4", "W5"], duration_days: 75, computed_at: null },
+      { crop_id: 3, crop_name: "Sesame", name_ml: "എള്ള്", family: "oilseed", water_need: "low", class: "marginal", reason: "Sensitive to excess soil moisture during seedling stage", start_windows: ["W2"], duration_days: 90, computed_at: null },
+      { crop_id: 4, crop_name: "Tea", name_ml: "തേയില", family: "shrub", water_need: "medium", class: "not_suitable", reason: "Elevation too low (< 800m required)", start_windows: [], duration_days: null, computed_at: null },
+    ];
     return {
-      crops: [
-        { crop: "Paddy (Uma)", name_ml: "ഉമ നെല്ല്", class: "suitable", reason: "Ideal for low elevation wetland soil", start_windows: ["W22", "W23"] },
-        { crop: "Cowpea", name_ml: "പയർ", class: "suitable", reason: "Nitrogen-fixing pulse suited for summer residual moisture", start_windows: ["W4", "W5"] },
-        { crop: "Sesame", name_ml: "എള്ള്", class: "marginal", reason: "Sensitive to excess soil moisture during seedling stage", start_windows: ["W2"] },
-        { crop: "Tea", name_ml: "തേയില", class: "not_suitable", reason: "Elevation too low (< 800m required)", start_windows: [] },
-      ],
+      field_id: fieldId,
+      computed_at: null,
+      suitable: crops.filter((crop) => crop.class === "suitable"),
+      marginal: crops.filter((crop) => crop.class === "marginal"),
+      not_suitable: crops.filter((crop) => crop.class === "not_suitable"),
     } as unknown as T;
   }
 
   if (cleanPath.includes("/history")) {
+    const fieldId = Number(cleanPath.match(/^\/fields\/(\d+)\//)?.[1]);
     return {
+      field_id: fieldId,
+      total: 2,
       seasons: [
         {
           id: 1,
+          field_id: fieldId,
+          crop_id: 1,
           crop_name: "Paddy (Uma)",
           status: "completed",
           start_date: "2025-06-15",
           end_date: "2025-10-20",
           outcome: "good",
+          loss_percent: null,
+          suspected_cause: null,
+          approval_status: "approved",
           approved_cause: "Adequate monsoon rainfall with minimal pest stress",
+          approver_role: null,
+          investment: null,
+          revenue: null,
+          created_at: "2025-10-20T00:00:00Z",
+          name_ml: "ഉമ നെല്ല്",
+          family: "grass",
+          approved_by_name: null,
         },
         {
           id: 2,
+          field_id: fieldId,
+          crop_id: 2,
           crop_name: "Cowpea",
           status: "completed",
           start_date: "2025-11-01",
           end_date: "2026-01-15",
           outcome: "moderate",
+          loss_percent: null,
+          suspected_cause: null,
+          approval_status: "approved",
           approved_cause: "Slight water deficit in late vegetative stage",
+          approver_role: null,
+          investment: null,
+          revenue: null,
+          created_at: "2026-01-15T00:00:00Z",
+          name_ml: "പയർ",
+          family: "legume",
+          approved_by_name: null,
+        },
+      ],
+    } as unknown as T;
+  }
+
+  const mapMatch = cleanPath.match(/^\/fields\/(\d+)\/map$/);
+  if (mapMatch) {
+    const field = MOCK_FIELDS.find((item) => item.id === Number(mapMatch[1]));
+    if (!field) return null;
+    return {
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [field.lon, field.lat] },
+          properties: {
+            name: field.name,
+            elevation_m: 4,
+            slope: "low",
+            flood_prone: true,
+            drainage: "poor",
+            area_ha: field.area_ha,
+            profile_status: field.profile_status,
+          },
         },
       ],
     } as unknown as T;

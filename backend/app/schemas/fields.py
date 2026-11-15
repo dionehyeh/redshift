@@ -252,6 +252,7 @@ class FieldListItem(BaseModel):
     profile_status: Literal["pending", "building", "ready", "failed"]
     climate_cell_id: str | None = None
     water_source: str
+    water_quality: str
     created_at: str
 
 
