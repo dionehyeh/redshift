@@ -53,23 +53,13 @@ export interface Scenario {
 export interface RescoreResponse {
   cards: PlanCardData[];
   changes: Change[];
-  farmer_choice_card?: PlanCardData | null;
 }
 
 export interface Plan {
   plan_id: number;
   outlook: { label: string; factor: number; confidence: Confidence };
   weights: Record<string, number>;
-  inputs: {
-    season?: string;
-    start_week: number;
-    next_week?: number;
-    stored_mm: number;
-    stored_basis: string;
-    stored_water_answer?: "dry" | "moist" | "wet" | null;
-    scenario?: Scenario;
-    toggle?: string | null;
-  };
+  inputs: { start_week: number; stored_mm: number; stored_basis: string };
   cards: PlanCardData[];
   farmer_choice_card: PlanCardData | null;
   chosen_card_id: number | null;
