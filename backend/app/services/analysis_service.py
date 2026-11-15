@@ -289,6 +289,7 @@ def analyze_season_task(job_id: str, season_id: int) -> None:
                 for row in existing_rows
             }
             finding_keys = set()
+            finding_ids = []
             for finding in findings:
                 text, explainer_key = _finding_text(finding)
                 unit = "%" if finding["kind"] == "rain_deficit" else "°C" if finding["kind"] == "heat" else None
@@ -307,6 +308,7 @@ def analyze_season_task(job_id: str, season_id: int) -> None:
                 )
                 previous = existing.get(key)
                 if previous:
+                    finding_ids.append(previous["id"])
                     conn.execute(
                         """UPDATE findings SET deviation = ?, unit = ?, crop_stage = ?,
                                severity = ?, confidence = ?, source = ?, resolution = ?,
@@ -315,18 +317,20 @@ def analyze_season_task(job_id: str, season_id: int) -> None:
                         (*values, previous["id"]),
                     )
                 else:
-                    conn.execute(
+                    inserted = conn.execute(
                         """INSERT INTO findings (
                                season_id, kind, week_from, week_to, deviation, unit,
                                crop_stage, severity, confidence, source, resolution,
                                text_plain, explainer_key
-                           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           RETURNING id""",
                         (
                             season_id,
                             *key,
                             *values,
                         ),
                     )
+                    finding_ids.append(inserted.fetchone()["id"])
             for key, previous in existing.items():
                 if key not in finding_keys and previous["review_status"] == "pending":
                     conn.execute("DELETE FROM findings WHERE id = ?", (previous["id"],))
@@ -334,6 +338,7 @@ def analyze_season_task(job_id: str, season_id: int) -> None:
         result = {
             "season_id": season_id,
             "findings_count": len(findings),
+            "finding_ids": finding_ids,
             "gaps": gaps,
             "comparison_years": comparison_years,
             "likely_causes": causes,
