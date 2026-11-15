@@ -250,8 +250,9 @@ def own_field(field_id: int, user: dict = Depends(require_role("farmer"))):
 def own_season(id: int, user: dict = Depends(require_role("farmer"))):
     with get_db() as conn:
         row = conn.execute(
-            """SELECT s.* FROM seasons s
+            """SELECT s.*, c.name AS crop_name FROM seasons s
                JOIN fields f ON f.id = s.field_id
+               LEFT JOIN crops c ON c.id = s.crop_id
                WHERE s.id = ? AND f.farmer_id = ?""",
             (id, user["id"]),
         ).fetchone()

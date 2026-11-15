@@ -1,196 +1,326 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import type { FormEvent } from "react";
 import Link from "next/link";
-import { ArrowLeft, Calendar, Sparkles, Sprout } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, Calendar, Loader2, Sparkles } from "lucide-react";
 import { api } from "@/lib/api";
+import type {
+  CropListResponse,
+  SeasonAnalysisStartResponse,
+  SeasonCreateResponse,
+  SeasonOutcome,
+} from "@/lib/season-types";
+
+const OUTCOMES: { value: SeasonOutcome; label: string; selected: string }[] = [
+  { value: "good", label: "Good", selected: "bg-emerald-700 text-white border-emerald-700" },
+  { value: "average", label: "Average", selected: "bg-blue-700 text-white border-blue-700" },
+  { value: "poor", label: "Poor", selected: "bg-amber-600 text-white border-amber-600" },
+  { value: "failed", label: "Failed", selected: "bg-red-700 text-white border-red-700" },
+];
+
+const INPUT_CLASS =
+  "h-12 w-full rounded-xl border-2 border-stone-200 bg-white px-4 text-sm text-stone-800 focus:border-green-600 focus:outline-none focus:ring-2 focus:ring-green-600/20";
 
 export default function NewSeasonPage({ params }: { params: { id: string } }) {
   const router = useRouter();
   const fieldId = params.id;
-
-  const [crop, setCrop] = useState("paddy");
-  const [startDate, setStartDate] = useState("2025-09-20");
-  const [endDate, setEndDate] = useState("2026-01-15");
-  const [outcome, setOutcome] = useState("poor");
-  const [lossPercent, setLossPercent] = useState(50);
-  const [suspectedCause, setSuspectedCause] = useState("water_shortage");
+  const [crops, setCrops] = useState<CropListResponse["items"]>([]);
+  const [crop, setCrop] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [outcome, setOutcome] = useState<SeasonOutcome | "">("");
+  const [lossPercent, setLossPercent] = useState("");
+  const [suspectedCause, setSuspectedCause] = useState("unsure");
+  const [investment, setInvestment] = useState("");
+  const [revenue, setRevenue] = useState("");
+  const [loadingCrops, setLoadingCrops] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [createdSeasonId, setCreatedSeasonId] = useState<number | null>(null);
   const [error, setError] = useState("");
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  useEffect(() => {
+    let active = true;
+    api<CropListResponse>("/crops")
+      .then((response) => {
+        if (!active) return;
+        setCrops(response.items);
+        setCrop(response.items[0]?.id ?? "");
+      })
+      .catch((requestError: unknown) => {
+        if (active) {
+          setError(
+            requestError instanceof Error
+              ? requestError.message
+              : "Could not load the crop catalog."
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setLoadingCrops(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!outcome || !crop) {
+      setError("Choose a crop and record the harvest outcome.");
+      return;
+    }
+
     setLoading(true);
     setError("");
-
+    setCreatedSeasonId(null);
     try {
-      const data = await api<{ id?: number; season_id?: number }>(`/fields/${fieldId}/seasons`, {
+      const season = await api<SeasonCreateResponse>(`/fields/${fieldId}/seasons`, {
         method: "POST",
         body: JSON.stringify({
           crop,
           start_date: startDate,
           end_date: endDate,
           outcome,
-          loss_percent: outcome === "poor" || outcome === "failed" ? Number(lossPercent) : 0,
-          suspected_cause: suspectedCause,
+          loss_percent:
+            outcome === "poor" || outcome === "failed"
+              ? Number(lossPercent)
+              : undefined,
+          suspected_cause:
+            outcome === "poor" || outcome === "failed"
+              ? suspectedCause
+              : undefined,
+          investment: investment === "" ? undefined : Number(investment),
+          revenue: revenue === "" ? undefined : Number(revenue),
         }),
       });
 
-      const targetSeasonId = data.id || data.season_id || 1;
-      // Trigger background diagnostic analysis if available
+      setCreatedSeasonId(season.id);
       try {
-        await api(`/seasons/${targetSeasonId}/analyze`, { method: "POST" });
-      } catch {
-        // silent fallback
+        await api<SeasonAnalysisStartResponse>(`/seasons/${season.id}/analyze`, {
+          method: "POST",
+        });
+        router.push(`/seasons/${season.id}`);
+      } catch (analysisError) {
+        setError(
+          `Season saved, but diagnosis could not be started: ${
+            analysisError instanceof Error
+              ? analysisError.message
+              : "The analysis request failed."
+          }`
+        );
       }
-      router.push(`/seasons/${targetSeasonId}`);
-    } catch (err: any) {
-      setError(err.message || "Failed to log season");
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Failed to save the season."
+      );
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      {/* Top Left Navigation */}
-      <div>
-        <Link
-          href={`/fields/${fieldId}`}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-stone-200 text-stone-700 hover:text-green-800 hover:border-green-300 font-semibold text-sm shadow-sm transition-all"
-        >
-          <ArrowLeft className="w-4 h-4 text-green-700" /> Back to Plot
-        </Link>
-      </div>
+    <div className="mx-auto max-w-2xl space-y-6">
+      <Link
+        href={`/fields/${fieldId}`}
+        className="inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 py-2 text-sm font-semibold text-stone-700 hover:border-green-300 hover:text-green-800"
+      >
+        <ArrowLeft className="h-4 w-4 text-green-700" /> Back to Plot
+      </Link>
 
-      <div className="space-y-2">
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold uppercase tracking-wider">
-          <Calendar className="w-3.5 h-3.5" /> Historical Harvest Calibration
+      <header className="space-y-2">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold uppercase tracking-wider text-emerald-800">
+          <Calendar className="h-3.5 w-3.5" /> Historical Harvest Record
         </span>
-        <h1 className="text-3xl font-extrabold text-stone-900 tracking-tight">
+        <h1 className="text-3xl font-extrabold tracking-tight text-stone-900">
           Log Completed Harvest Season
         </h1>
-        <p className="text-stone-600 text-sm">
-          Provide your observed harvest outcome to diagnose stress weeks against NASA 20-year precipitation and temperature normals.
+        <p className="text-sm text-stone-600">
+          Record the season details. The diagnostic uses the available climate
+          observations and reports any data gaps.
         </p>
-      </div>
+      </header>
 
       {error && (
-        <div className="p-4 text-sm text-red-800 bg-red-50 border border-red-200 rounded-xl font-medium">
+        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-800">
           {error}
+          {createdSeasonId && (
+            <Link
+              href={`/seasons/${createdSeasonId}`}
+              className="ml-2 font-bold underline"
+            >
+              Open saved season
+            </Link>
+          )}
         </div>
       )}
 
       <form
         onSubmit={handleSubmit}
-        className="p-8 bg-white border-2 border-stone-200 rounded-3xl shadow-sm space-y-5"
+        className="space-y-5 rounded-3xl border-2 border-stone-200 bg-white p-8 shadow-sm"
       >
         <div className="space-y-1.5">
-          <label className="text-sm font-bold text-stone-800">Crop Cultivated</label>
+          <label htmlFor="season-crop" className="text-sm font-bold text-stone-800">
+            Crop Cultivated
+          </label>
           <select
+            id="season-crop"
+            required
             value={crop}
-            onChange={(e) => setCrop(e.target.value)}
-            className="w-full h-12 px-4 border-2 border-stone-200 rounded-xl bg-white focus:border-green-600 focus:ring-2 focus:ring-green-600/20 focus:outline-none font-medium text-stone-800 text-sm transition"
+            onChange={(event) => setCrop(event.target.value)}
+            disabled={loadingCrops || crops.length === 0}
+            className={INPUT_CLASS}
           >
-            <option value="paddy">Paddy (Rice / നെല്ല്)</option>
-            <option value="green_gram">Green Gram (ചെറുപയർ)</option>
-            <option value="cowpea">Cowpea (വൻപയർ)</option>
-            <option value="sesame">Sesame (എള്ള്)</option>
-            <option value="banana">Banana (വാഴ)</option>
-            <option value="tapioca">Tapioca (കപ്പ)</option>
+            {loadingCrops && <option value="">Loading crop catalog…</option>}
+            {!loadingCrops && crops.length === 0 && (
+              <option value="">No crops are available</option>
+            )}
+            {crops.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name.en}
+                {item.name.ml ? ` (${item.name.ml})` : ""}
+              </option>
+            ))}
           </select>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <label className="text-sm font-bold text-stone-800">Sowing / Planting Date</label>
+            <label htmlFor="season-start" className="text-sm font-bold text-stone-800">
+              Sowing / Planting Date
+            </label>
             <input
+              id="season-start"
               type="date"
               required
               value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-full h-12 px-4 border-2 border-stone-200 rounded-xl focus:border-green-600 focus:ring-2 focus:ring-green-600/20 focus:outline-none font-mono text-stone-900 text-sm transition"
+              max={endDate || undefined}
+              onChange={(event) => setStartDate(event.target.value)}
+              className={INPUT_CLASS}
             />
           </div>
           <div className="space-y-1.5">
-            <label className="text-sm font-bold text-stone-800">Harvest Date</label>
+            <label htmlFor="season-end" className="text-sm font-bold text-stone-800">
+              Harvest Date
+            </label>
             <input
+              id="season-end"
               type="date"
               required
               value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="w-full h-12 px-4 border-2 border-stone-200 rounded-xl focus:border-green-600 focus:ring-2 focus:ring-green-600/20 focus:outline-none font-mono text-stone-900 text-sm transition"
+              min={startDate || undefined}
+              onChange={(event) => setEndDate(event.target.value)}
+              className={INPUT_CLASS}
             />
           </div>
         </div>
 
-        <div className="space-y-2">
-          <label className="text-sm font-bold text-stone-800">Observed Harvest Outcome</label>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-            {[
-              { val: "good", label: "Good", color: "bg-emerald-700 text-white border-emerald-700" },
-              { val: "average", label: "Average", color: "bg-blue-700 text-white border-blue-700" },
-              { val: "poor", label: "Poor", color: "bg-amber-600 text-white border-amber-600" },
-              { val: "failed", label: "Failed", color: "bg-red-700 text-white border-red-700" },
-            ].map((opt) => (
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-bold text-stone-800">
+            Observed Harvest Outcome
+          </legend>
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+            {OUTCOMES.map((option) => (
               <button
-                key={opt.val}
+                key={option.value}
                 type="button"
-                onClick={() => setOutcome(opt.val)}
-                className={`h-12 rounded-xl text-xs font-extrabold capitalize transition-all border-2 ${
-                  outcome === opt.val
-                    ? opt.color + " shadow-md"
-                    : "bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100"
+                aria-pressed={outcome === option.value}
+                onClick={() => setOutcome(option.value)}
+                className={`h-12 rounded-xl border-2 text-xs font-extrabold transition ${
+                  outcome === option.value
+                    ? `${option.selected} shadow-md`
+                    : "border-stone-200 bg-stone-50 text-stone-700 hover:bg-stone-100"
                 }`}
               >
-                {opt.label}
+                {option.label}
               </button>
             ))}
           </div>
-        </div>
+        </fieldset>
 
         {(outcome === "poor" || outcome === "failed") && (
-          <div className="p-5 bg-stone-50 border-2 border-stone-200 rounded-2xl space-y-4">
+          <div className="space-y-4 rounded-2xl border-2 border-stone-200 bg-stone-50 p-5">
             <div className="space-y-1.5">
-              <label className="text-sm font-bold text-stone-800 flex justify-between">
+              <label htmlFor="season-loss" className="flex justify-between text-sm font-bold text-stone-800">
                 <span>Estimated Crop Loss</span>
-                <span className="text-red-700 font-extrabold">{lossPercent}%</span>
+                <span className="font-extrabold text-red-700">{lossPercent || 0}%</span>
               </label>
               <input
+                id="season-loss"
                 type="range"
                 min={0}
                 max={100}
-                step={5}
-                value={lossPercent}
-                onChange={(e) => setLossPercent(Number(e.target.value))}
-                className="w-full h-2 bg-stone-200 rounded-lg accent-green-700 cursor-pointer"
+                step={1}
+                value={lossPercent || 0}
+                onChange={(event) => setLossPercent(event.target.value)}
+                className="h-2 w-full cursor-pointer rounded-lg bg-stone-200 accent-green-700"
               />
             </div>
-
             <div className="space-y-1.5">
-              <label className="text-sm font-bold text-stone-800">Suspected Primary Cause</label>
+              <label htmlFor="suspected-cause" className="text-sm font-bold text-stone-800">
+                Suspected Primary Cause
+              </label>
               <select
+                id="suspected-cause"
                 value={suspectedCause}
-                onChange={(e) => setSuspectedCause(e.target.value)}
-                className="w-full h-12 px-4 border-2 border-stone-200 rounded-xl bg-white focus:border-green-600 focus:ring-2 focus:ring-green-600/20 focus:outline-none font-medium text-stone-800 text-sm transition"
+                onChange={(event) => setSuspectedCause(event.target.value)}
+                className={INPUT_CLASS}
               >
-                <option value="water_shortage">Water Shortage / Dry Spell at Critical Growth Stage</option>
-                <option value="excess_rain">Flooding / Waterlogging / Cloudburst</option>
-                <option value="pests">Pest Infestation or Fungal Blast</option>
-                <option value="unsure">Not Sure / Requires Satellite Analysis</option>
+                <option value="water_shortage">Water shortage / dry spell</option>
+                <option value="excess_rain">Excess rain / waterlogging</option>
+                <option value="pests">Pests or disease</option>
+                <option value="unsure">Not sure</option>
               </select>
             </div>
           </div>
         )}
 
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <label htmlFor="season-investment" className="text-sm font-bold text-stone-800">
+              Investment (optional)
+            </label>
+            <input
+              id="season-investment"
+              type="number"
+              min="0"
+              step="0.01"
+              value={investment}
+              onChange={(event) => setInvestment(event.target.value)}
+              className={INPUT_CLASS}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="season-revenue" className="text-sm font-bold text-stone-800">
+              Revenue (optional)
+            </label>
+            <input
+              id="season-revenue"
+              type="number"
+              min="0"
+              step="0.01"
+              value={revenue}
+              onChange={(event) => setRevenue(event.target.value)}
+              className={INPUT_CLASS}
+            />
+          </div>
+        </div>
+
         <button
           type="submit"
-          disabled={loading}
-          className="w-full h-13 py-3.5 rounded-xl bg-gradient-to-r from-green-700 to-emerald-700 text-white font-bold text-base shadow-md hover:shadow-lg hover:from-green-800 hover:to-emerald-800 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+          disabled={loading || loadingCrops || crops.length === 0}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-green-700 to-emerald-700 py-3.5 text-base font-bold text-white shadow-md transition hover:from-green-800 hover:to-emerald-800 disabled:opacity-60"
         >
-          <Sparkles className="w-5 h-5 text-emerald-200" />
-          {loading ? "Diagnosing NASA Weather History..." : "Save Season & Run Diagnostic"}
+          {loading ? (
+            <Loader2 className="h-5 w-5 animate-spin" />
+          ) : (
+            <Sparkles className="h-5 w-5 text-emerald-200" />
+          )}
+          {loading ? "Saving season and starting diagnosis…" : "Save Season & Run Diagnostic"}
         </button>
       </form>
     </div>

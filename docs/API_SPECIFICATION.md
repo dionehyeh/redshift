@@ -93,6 +93,20 @@ rainfall deviations are percentages and heat deviations are degrees Celsius.
 Unavailable source data is reported as a gap and completes the job as
 `done_with_gaps`.
 
+`POST /fields/{id}/seasons` accepts a crop name from `GET /crops`, ISO `start_date`
+and `end_date` values, and an outcome (`good`, `average`, `poor`, or `failed`).
+Dates must be ordered; optional `loss_percent` is 0–100, and `investment` and
+`revenue` must be non-negative. `PATCH /seasons/{id}` accepts any subset of crop,
+dates, outcome, suspected cause, loss percent, investment, and revenue.
+
+`GET /seasons/{id}/analysis` includes `analysis_status` (`not_started`, `queued`,
+`running`, `done`, `done_with_gaps`, or `failed`) and the current `job_id` when
+available. Before completion, `findings` and `gaps` are empty and
+`comparison_years` and `likely_causes` are null. A failed job includes
+`analysis_error`; completed results include the actual climatology period, findings,
+gaps, and likely causes saved by that job. Correcting a finding requires
+`new_cause`; confirming a finding links the approved cause to its diagnosis.
+
 ### Crop Planning & Scenario Simulation
 | # | Method | Path | Auth | Description |
 |---|---|---|---|---|
