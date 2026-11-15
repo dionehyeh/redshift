@@ -1,5 +1,7 @@
 from typing import Literal
+
 from pydantic import BaseModel, Field
+
 
 class ScenarioModel(BaseModel):
     rain: float = Field(1.0, ge=0.5, le=1.5)
@@ -8,19 +10,20 @@ class ScenarioModel(BaseModel):
 class PlanCreateRequest(BaseModel):
     mode: Literal["suggest", "farmer_led"] = "suggest"
     start_week: int | None = Field(None, ge=1, le=52)
+    next_week: int | None = Field(None, ge=1, le=52)
     season: Literal["virippu", "mundakan", "puncha"] | None = None
     crop: str | None = None
     reason: Literal["market", "finance", "other"] | None = None
     toggle: Literal["earn_more", "play_safe"] | None = None
     stored_water_answer: Literal["dry", "moist", "wet"] | None = None
-    scenario: ScenarioModel = ScenarioModel()
+    scenario: ScenarioModel = Field(default_factory=ScenarioModel)
 
 class RescoreRequest(BaseModel):
     scenario: ScenarioModel
     toggle: Literal["earn_more", "play_safe"] | None = None
 
 class PlanChooseRequest(BaseModel):
-    card_id: int
+    card_id: int = Field(ge=1)
 
 class ConfidenceDetail(BaseModel):
     level: str
@@ -64,6 +67,7 @@ class FactorChangeItem(BaseModel):
 class RescoreResponse(BaseModel):
     cards: list[PlanCardResponse]
     changes: list[FactorChangeItem] = []
+    farmer_choice_card: PlanCardResponse | None = None
 
 class PlanResponse(BaseModel):
     plan_id: int

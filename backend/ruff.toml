@@ -1,0 +1,4 @@
+# FastAPI uses these calls as dependency declarations in parameter defaults.
+[lint.per-file-ignores]
+"app/deps.py" = ["B008"]
+"app/routers/*.py" = ["B008"]

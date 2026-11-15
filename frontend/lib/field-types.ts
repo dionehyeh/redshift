@@ -11,6 +11,7 @@ export interface FieldListItem {
   profile_status: FieldProfileStatus;
   climate_cell_id: string | null;
   water_source: string;
+  water_quality?: string;
   created_at: string;
 }
 

@@ -1,15 +1,16 @@
 import json
-from datetime import datetime
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends
-from app.schemas.reports import (
-    ReportCreateRequest,
-    CommentCreateRequest,
-    ReportResponse,
-)
-from app.deps import current_user, require_role
+
 from app.db import get_db
-from app.services.report_service import create_report_service
+from app.deps import current_user, require_role
 from app.errors import AppError
+from app.schemas.reports import (
+    CommentCreateRequest,
+    ReportCreateRequest,
+)
+from app.services.report_service import create_report_service, report_is_active
 
 router = APIRouter(tags=["Consultation Reports"])
 
@@ -26,16 +27,25 @@ def create_report(body: ReportCreateRequest, user: dict = Depends(require_role("
 @router.get("/reports/{id}")
 def get_report(id: int, user: dict = Depends(current_user)):
     with get_db() as conn:
-        report = conn.execute("SELECT * FROM reports WHERE id = ?", (id,)).fetchone()
+        report = conn.execute(
+            """SELECT r.*, f.farmer_id AS field_owner_id
+               FROM reports r
+               JOIN plans p ON p.id = r.plan_id
+               JOIN fields f ON f.id = p.field_id
+               WHERE r.id = ?""",
+            (id,),
+        ).fetchone()
         if not report:
             raise AppError("NOT_FOUND", "Report not found", status=404)
-        
-        # Access control check
-        if user["role"] == "farmer" and report["created_by"] != user["id"]:
+        if user["role"] == "farmer":
+            if report["created_by"] != user["id"] or report["field_owner_id"] != user["id"]:
+                raise AppError("FORBIDDEN", "Access denied", status=403)
+        elif user["role"] in ("mentor", "officer"):
+            if report["shared_with"] != user["id"] or report["created_by"] != report["field_owner_id"]:
+                raise AppError("FORBIDDEN", "Report not shared with your account", status=403)
+        else:
             raise AppError("FORBIDDEN", "Access denied", status=403)
-        if user["role"] in ("mentor", "officer") and report["shared_with"] != user["id"]:
-            raise AppError("FORBIDDEN", "Report not shared with your account", status=403)
-        if report["revoked_at"] or report["expires_at"] < datetime.utcnow().isoformat():
+        if not report_is_active(report):
             raise AppError("REPORT_UNAVAILABLE", "This report consultation has expired or been revoked", status=403)
 
         comments_rows = conn.execute("SELECT * FROM report_comments WHERE report_id = ? ORDER BY created_at ASC", (id,)).fetchall()
@@ -68,9 +78,23 @@ def get_report(id: int, user: dict = Depends(current_user)):
 @router.post("/reports/{id}/comments", status_code=201)
 def add_comment(id: int, body: CommentCreateRequest, user: dict = Depends(require_role("mentor", "officer"))):
     with get_db() as conn:
-        report = conn.execute("SELECT * FROM reports WHERE id = ?", (id,)).fetchone()
+        report = conn.execute(
+            """SELECT r.*, f.farmer_id AS field_owner_id
+               FROM reports r
+               JOIN plans p ON p.id = r.plan_id
+               JOIN fields f ON f.id = p.field_id
+               WHERE r.id = ?""",
+            (id,),
+        ).fetchone()
         if not report:
             raise AppError("NOT_FOUND", "Report not found", status=404)
+        if (
+            report["shared_with"] != user["id"]
+            or report["created_by"] != report["field_owner_id"]
+        ):
+            raise AppError("FORBIDDEN", "Report not shared with your account", status=403)
+        if not report_is_active(report):
+            raise AppError("REPORT_UNAVAILABLE", "This report consultation has expired or been revoked", status=403)
         
         label = "Agricultural Extension Officer" if user["role"] == "officer" else "Student Mentor, not a certified advisor"
         cursor = conn.execute(
@@ -86,13 +110,28 @@ def add_comment(id: int, body: CommentCreateRequest, user: dict = Depends(requir
             (user["id"], id),
         )
 
-        return {"id": comment_id, "author_label": label, "body": body.text, "created_at": datetime.utcnow().isoformat()}
+        created_at = datetime.now(UTC).replace(tzinfo=None).isoformat()
+        return {"id": comment_id, "author_label": label, "body": body.text, "created_at": created_at}
 
 @router.post("/reports/{id}/revoke")
 def revoke_report(id: int, user: dict = Depends(require_role("farmer"))):
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(UTC).replace(tzinfo=None).isoformat()
     with get_db() as conn:
-        conn.execute("UPDATE reports SET status = 'revoked', revoked_at = ? WHERE id = ? AND created_by = ?", (now, id, user["id"]))
+        report = conn.execute(
+            """SELECT r.id, r.revoked_at FROM reports r
+               JOIN plans p ON p.id = r.plan_id
+               JOIN fields f ON f.id = p.field_id
+               WHERE r.id = ? AND r.created_by = ? AND f.farmer_id = ?""",
+            (id, user["id"], user["id"]),
+        ).fetchone()
+        if not report:
+            raise AppError("NOT_FOUND", "Report not found", status=404)
+        if report["revoked_at"]:
+            return {"status": "revoked"}
+        conn.execute(
+            "UPDATE reports SET status = 'revoked', revoked_at = ? WHERE id = ?",
+            (now, id),
+        )
         conn.execute(
             """INSERT INTO audit_log (user_id, action, object_type, object_id)
                VALUES (?, 'REVOKE_REPORT', 'report', ?)""",
@@ -102,14 +141,19 @@ def revoke_report(id: int, user: dict = Depends(require_role("farmer"))):
 
 @router.get("/mentor/inbox")
 def get_mentor_inbox(user: dict = Depends(require_role("mentor", "officer"))):
+    now = datetime.now(UTC).replace(tzinfo=None).isoformat()
     with get_db() as conn:
         rows = conn.execute(
             """SELECT r.id as report_id, u.name as farmer_name, r.created_at, r.status, r.expires_at 
                FROM reports r
                JOIN users u ON r.created_by = u.id
+               JOIN plans p ON p.id = r.plan_id
+               JOIN fields f ON f.id = p.field_id
                WHERE r.shared_with = ? AND r.revoked_at IS NULL
+                 AND r.status <> 'revoked' AND r.expires_at > ?
+                 AND r.created_by = f.farmer_id
                ORDER BY r.created_at DESC""",
-            (user["id"],),
+            (user["id"], now),
         ).fetchall()
         return {"items": [dict(r) for r in rows], "next_cursor": None}
 

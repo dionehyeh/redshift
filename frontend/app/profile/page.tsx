@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
-
+import { ArrowLeft } from "lucide-react";
 import { api } from "@/lib/api";
 import type { UserPrefsUpdate, UserProfile } from "@/lib/types";
 
@@ -84,143 +84,163 @@ export default function ProfilePage() {
   }
 
   return (
-    <section className="mx-auto max-w-2xl space-y-6">
-      <header className="space-y-2">
-        <Link href="/" className="text-sm font-medium text-emerald-700 hover:underline">
-          Back to Field Shift
-        </Link>
-        <h1 className="text-2xl font-bold text-slate-900">Account profile</h1>
-        <p className="text-sm text-slate-600">
-          Your sign-in is managed by Clerk. Update your Field Shift preferences here.
-        </p>
-      </header>
-
-      {loading ? (
-        <p className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600">
-          Loading your profile...
-        </p>
-      ) : error && !profile ? (
-        <div
-          role="alert"
-          className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"
-        >
-          {error}
-        </div>
-      ) : profile ? (
-        <>
-          <dl className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-5 sm:grid-cols-2">
-            <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                Name
-              </dt>
-              <dd className="mt-1 text-sm font-medium text-slate-900">
-                {profile.name}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                Email or phone
-              </dt>
-              <dd className="mt-1 break-all text-sm font-medium text-slate-900">
-                {profile.contact}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                Account type
-              </dt>
-              <dd className="mt-1 text-sm font-medium capitalize text-slate-900">
-                {profile.helper_type
-                  ? `${profile.role} · ${profile.helper_type}`
-                  : profile.role}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                Field Shift ID
-              </dt>
-              <dd className="mt-1 text-sm font-medium text-slate-900">
-                {profile.id}
-              </dd>
-            </div>
-          </dl>
-
-          <form
-            onSubmit={savePreferences}
-            className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5"
+    <div className="min-h-screen bg-gradient-to-b from-stone-50 via-stone-100 to-amber-50">
+      {/* ── Top bar ── */}
+      <div className="sticky top-0 z-40 bg-gradient-to-r from-green-900 via-green-800 to-emerald-900 shadow-lg">
+        <div className="max-w-4xl mx-auto flex items-center justify-between px-5 h-14">
+          <Link
+            href="/fields"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/15 text-white text-sm font-semibold hover:bg-white/25 transition-all"
           >
-            <h2 className="text-lg font-semibold text-slate-900">Preferences</h2>
+            <ArrowLeft className="w-4 h-4" />
+            My Fields
+          </Link>
+          <span className="text-emerald-200/70 text-xs font-bold tracking-widest uppercase">
+            Field Shift
+          </span>
+        </div>
+      </div>
 
-            <label className="block space-y-1">
-              <span className="text-sm font-medium text-slate-700">Language</span>
-              <select
-                value={language}
-                onChange={(event) =>
-                  setLanguage(event.target.value === "ml" ? "ml" : "en")
-                }
-                className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"
-              >
-                <option value="en">English</option>
-                <option value="ml">Malayalam</option>
-              </select>
-            </label>
+      {/* ── Content ── */}
+      <section className="mx-auto max-w-2xl space-y-6 px-5 py-10">
+        <header className="space-y-2">
+          <h1 className="text-3xl font-extrabold text-stone-900">
+            Account Profile
+          </h1>
+          <p className="text-sm text-stone-500">
+            Your sign-in is managed by Clerk. Update your Field Shift
+            preferences here.
+          </p>
+        </header>
 
-            <label className="block space-y-1">
-              <span className="text-sm font-medium text-slate-700">
-                Planning preference
-              </span>
-              <select
-                value={marketToggle ?? ""}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  setMarketToggle(
-                    value === "earn_more" || value === "play_safe" ? value : null
-                  );
-                }}
-                className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"
-              >
-                <option value="">No default preference</option>
-                <option value="earn_more">Earn more</option>
-                <option value="play_safe">Play safe</option>
-              </select>
-            </label>
+        {loading ? (
+          <div className="rounded-2xl border-2 border-stone-200 bg-white p-8 text-center">
+            <div className="w-8 h-8 border-4 border-stone-200 border-t-green-700 rounded-full animate-spin mx-auto" />
+            <p className="text-sm text-stone-500 mt-3">Loading profile…</p>
+          </div>
+        ) : error && !profile ? (
+          <div
+            role="alert"
+            className="rounded-2xl border-2 border-red-200 bg-red-50 p-5 text-sm text-red-800 font-medium"
+          >
+            {error}
+          </div>
+        ) : profile ? (
+          <>
+            {/* Profile info card */}
+            <dl className="grid gap-4 rounded-2xl border-2 border-stone-200 bg-white p-6 sm:grid-cols-2">
+              {[
+                { label: "Name", value: profile.name },
+                { label: "Email or phone", value: profile.contact },
+                {
+                  label: "Account type",
+                  value: profile.helper_type
+                    ? `${profile.role} · ${profile.helper_type}`
+                    : profile.role,
+                },
+                { label: "Field Shift ID", value: String(profile.id) },
+              ].map((item) => (
+                <div key={item.label}>
+                  <dt className="text-[10px] font-bold uppercase tracking-widest text-stone-400">
+                    {item.label}
+                  </dt>
+                  <dd className="mt-1 text-sm font-semibold text-stone-800 capitalize">
+                    {item.value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
 
-            <label className="flex items-start gap-3 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={shareConsent === 1}
-                onChange={(event) =>
-                  setShareConsent(event.target.checked ? 1 : 0)
-                }
-                className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-700"
-              />
-              <span>
-                Use my default sharing consent when preparing reports. You can
-                still review and change the fields shared on each report.
-              </span>
-            </label>
-
-            {error && (
-              <p role="alert" className="text-sm text-red-700">
-                {error}
-              </p>
-            )}
-            {saved && (
-              <p role="status" className="text-sm text-emerald-700">
-                Preferences saved.
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={saving}
-              className="h-11 rounded-xl bg-emerald-700 px-5 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-60"
+            {/* Preferences form */}
+            <form
+              onSubmit={savePreferences}
+              className="space-y-5 rounded-2xl border-2 border-stone-200 bg-white p-6"
             >
-              {saving ? "Saving..." : "Save preferences"}
-            </button>
-          </form>
-        </>
-      ) : null}
-    </section>
+              <h2 className="text-lg font-extrabold text-stone-900">
+                Preferences
+              </h2>
+
+              <label className="block space-y-1.5">
+                <span className="text-sm font-semibold text-stone-700">
+                  Language
+                </span>
+                <select
+                  value={language}
+                  onChange={(event) =>
+                    setLanguage(event.target.value === "ml" ? "ml" : "en")
+                  }
+                  className="h-12 w-full rounded-xl border-2 border-stone-200 bg-stone-50 px-4 text-sm font-medium focus:border-green-600 focus:ring-2 focus:ring-green-600/20 outline-none transition"
+                >
+                  <option value="en">English</option>
+                  <option value="ml">Malayalam</option>
+                </select>
+              </label>
+
+              <label className="block space-y-1.5">
+                <span className="text-sm font-semibold text-stone-700">
+                  Planning preference
+                </span>
+                <select
+                  value={marketToggle ?? ""}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setMarketToggle(
+                      value === "earn_more" || value === "play_safe"
+                        ? value
+                        : null
+                    );
+                  }}
+                  className="h-12 w-full rounded-xl border-2 border-stone-200 bg-stone-50 px-4 text-sm font-medium focus:border-green-600 focus:ring-2 focus:ring-green-600/20 outline-none transition"
+                >
+                  <option value="">No default preference</option>
+                  <option value="earn_more">Earn more</option>
+                  <option value="play_safe">Play safe</option>
+                </select>
+              </label>
+
+              <label className="flex items-start gap-3 text-sm text-stone-700 bg-stone-50 p-4 rounded-xl border border-stone-200">
+                <input
+                  type="checkbox"
+                  checked={shareConsent === 1}
+                  onChange={(event) =>
+                    setShareConsent(event.target.checked ? 1 : 0)
+                  }
+                  className="mt-0.5 h-5 w-5 rounded border-stone-300 text-green-700 focus:ring-green-600"
+                />
+                <span>
+                  Use my default sharing consent when preparing reports. You can
+                  still review and change the fields shared on each report.
+                </span>
+              </label>
+
+              {error && (
+                <div
+                  role="alert"
+                  className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-4 py-3 font-medium"
+                >
+                  {error}
+                </div>
+              )}
+              {saved && (
+                <div
+                  role="status"
+                  className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 font-medium"
+                >
+                  ✅ Preferences saved successfully.
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={saving}
+                className="h-12 w-full rounded-xl bg-gradient-to-r from-green-700 to-emerald-700 px-6 text-sm font-bold text-white shadow-md hover:shadow-lg hover:from-green-800 hover:to-emerald-800 disabled:opacity-60 transition-all"
+              >
+                {saving ? "Saving…" : "Save Preferences"}
+              </button>
+            </form>
+          </>
+        ) : null}
+      </section>
+    </div>
   );
 }

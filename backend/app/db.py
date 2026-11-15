@@ -1,6 +1,7 @@
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Generator
+from typing import Any
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -75,6 +76,11 @@ def init_db(schema_path: str | None = None) -> None:
         _execute_script(conn, path.read_text(encoding="utf-8"))
         migration_path = (
             Path(__file__).resolve().parents[1] / "migrations/002_clerk_auth.sql"
+        )
+        if migration_path.exists():
+            _execute_script(conn, migration_path.read_text(encoding="utf-8"))
+        migration_path = (
+            Path(__file__).resolve().parents[1] / "migrations/003_plan_card_robustness.sql"
         )
         if migration_path.exists():
             _execute_script(conn, migration_path.read_text(encoding="utf-8"))

@@ -50,6 +50,51 @@ export const MOCK_FIELDS: FieldItem[] = [
   },
 ];
 
+export const MOCK_STRATEGY_CARDS = [
+  {
+    id: 1,
+    card_type: "customary",
+    crop: "Paddy (Uma)",
+    name_ml: "ഉമ നെല്ല്",
+    headline: "Traditional High-Yield Wet Paddy",
+    suitability: "suitable",
+    resilience_score: 74,
+    expected_yield: "4.8 - 5.2 t/ha",
+    water_demand: "High (Canal continuous flow)",
+    key_advantages: ["High regional market demand", "Subsidized procurement support"],
+    climate_risks: ["Susceptible to late monsoon unseasonal cloudbursts"],
+    soil_compatibility: "Matches local pH 5.4 with liming practice",
+  },
+  {
+    id: 2,
+    card_type: "alternative_1",
+    crop: "Cowpea (Kanakamani)",
+    name_ml: "പയർ",
+    headline: "Nitrogen-Fixing Climate Shield",
+    suitability: "suitable",
+    resilience_score: 89,
+    expected_yield: "1.2 - 1.5 t/ha (High market value)",
+    water_demand: "Low (Residual soil moisture)",
+    key_advantages: ["Restores nitrogen naturally", "Drought tolerant in dry weeks"],
+    climate_risks: ["Requires well-drained bunds if water table surges"],
+    soil_compatibility: "Thrives in acid clay loam",
+  },
+  {
+    id: 3,
+    card_type: "alternative_2",
+    crop: "Sesame (Thilak)",
+    name_ml: "എള്ള്",
+    headline: "Short Duration Summer Rotation",
+    suitability: "marginal",
+    resilience_score: 68,
+    expected_yield: "600 - 800 kg/ha",
+    water_demand: "Very Low",
+    key_advantages: ["High cash return per quintal", "Minimal pest interventions"],
+    climate_risks: ["Sensitive to waterlogging during early seedling germination"],
+    soil_compatibility: "Requires raised bed cultivation",
+  },
+];
+
 export function getMockResponse<T>(path: string): T | null {
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
 
@@ -57,7 +102,7 @@ export function getMockResponse<T>(path: string): T | null {
     return { items: MOCK_FIELDS, next_cursor: null } as unknown as T;
   }
 
-  if (cleanPath === "/me") {
+  if (cleanPath === "/me" || cleanPath === "/me/prefs") {
     return MOCK_USER as unknown as T;
   }
 
@@ -89,5 +134,163 @@ export function getMockResponse<T>(path: string): T | null {
     } as unknown as T;
   }
 
-  return null;
+  if (cleanPath.includes("/history")) {
+    return {
+      seasons: [
+        {
+          id: 1,
+          crop_name: "Paddy (Uma)",
+          status: "completed",
+          start_date: "2025-06-15",
+          end_date: "2025-10-20",
+          outcome: "good",
+          approved_cause: "Adequate monsoon rainfall with minimal pest stress",
+        },
+        {
+          id: 2,
+          crop_name: "Cowpea",
+          status: "completed",
+          start_date: "2025-11-01",
+          end_date: "2026-01-15",
+          outcome: "moderate",
+          approved_cause: "Slight water deficit in late vegetative stage",
+        },
+      ],
+    } as unknown as T;
+  }
+
+  if (cleanPath.includes("/plans")) {
+    return {
+      id: 1,
+      field_id: 1,
+      field_name: "Kuttanad Demonstration Plot",
+      season: "puncha",
+      chosen_card_id: 2,
+      cards: MOCK_STRATEGY_CARDS,
+      plan_id: 1,
+    } as unknown as T;
+  }
+
+  if (cleanPath.includes("/seasons")) {
+    return {
+      id: 1,
+      field_id: 1,
+      crop_name: "Paddy (Uma)",
+      start_date: "2025-06-15",
+      end_date: "2025-10-20",
+      outcome: "moderate",
+      findings: [
+        {
+          id: 1,
+          metric: "Precipitation Deficit (GPM IMERG)",
+          finding: "-32% lower rain during vegetative tillering phase (Week 28-30)",
+          severity: "warning",
+        },
+        {
+          id: 2,
+          metric: "Thermal Stress (NASA POWER)",
+          finding: "Daytime surface temperatures exceeded 34.5°C threshold on 4 consecutive days",
+          severity: "caution",
+        },
+      ],
+      recommendations: [
+        "Introduce short-duration pulse like Cowpea in rotation to break pest cycle and optimize residual soil moisture.",
+      ],
+    } as unknown as T;
+  }
+
+  if (cleanPath.includes("/timeline")) {
+    const weeks = Array.from({ length: 52 }, (_, i) => i + 1);
+    const rainNormals = weeks.map((w) => (w >= 22 && w <= 36 ? 80 + Math.sin(w) * 35 : 12 + Math.random() * 8));
+    const rainObserved = rainNormals.map((r, i) => (i >= 25 && i <= 29 ? r * 0.65 : r * (0.9 + Math.random() * 0.2)));
+    const tempNormals = weeks.map((w) => 27 + Math.sin((w / 52) * Math.PI) * 5);
+    const tempObserved = tempNormals.map((t) => t + (Math.random() * 1.5 - 0.5));
+    const ndviObserved = weeks.map((w) => (w >= 24 && w <= 42 ? 0.68 + Math.sin(w) * 0.12 : 0.35 + Math.random() * 0.08));
+
+    return {
+      weeks,
+      source_note: "NASA POWER Daily (0.5° resolution) + GPM IMERG Final precipitation baselines (20-year climatology)",
+      series: {
+        rain_mm: {
+          values: rainObserved,
+          source: "GPM IMERG Late Run v06",
+          resolution: "10 km (0.1°)",
+          is_normal: false,
+        },
+        tmean: {
+          values: tempObserved,
+          source: "NASA POWER Thermal",
+          resolution: "50 km (0.5°)",
+          is_normal: false,
+        },
+        ndvi: {
+          values: ndviObserved,
+          source: "MODIS MOD13Q1 16-Day",
+          resolution: "250 m",
+          is_normal: false,
+        },
+      },
+      normals: {
+        rain_mm: rainNormals,
+        tmean: tempNormals,
+        ndvi: ndviObserved.map((n) => n * 0.95),
+      },
+    } as unknown as T;
+  }
+
+  if (cleanPath.includes("/map")) {
+    return {
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          geometry: {
+            type: "Polygon",
+            coordinates: [
+              [
+                [76.514, 9.581],
+                [76.519, 9.581],
+                [76.519, 9.585],
+                [76.514, 9.585],
+                [76.514, 9.581],
+              ],
+            ],
+          },
+          properties: {
+            name: "Plot Boundary",
+            area_ha: 1.2,
+            flood_prone: true,
+          },
+        },
+      ],
+    } as unknown as T;
+  }
+
+  if (cleanPath.includes("/inbox")) {
+    return {
+      items: [
+        {
+          id: 1,
+          farmer_name: "Kerala Demo Farmer",
+          field_name: "Kuttanad Demonstration Plot",
+          report_type: "Crop Rotation Strategy",
+          created_at: "2026-11-14T08:00:00Z",
+          status: "pending_review",
+        },
+      ],
+    } as unknown as T;
+  }
+
+  if (cleanPath.includes("/reports")) {
+    return {
+      id: 1,
+      title: "Kuttanad Plot Season Report",
+      farmer_name: "Kerala Demo Farmer",
+      comments: [
+        { id: 1, author: "Extension Officer (Krishi Bhavan)", text: "Soil tests confirm acidic pH 5.4. Apply agricultural dolomite before seed sowing." },
+      ],
+    } as unknown as T;
+  }
+
+  return { field_id: 1, plan_id: 1, id: 1, success: true } as unknown as T;
 }

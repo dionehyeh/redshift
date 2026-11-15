@@ -1,5 +1,6 @@
 """NASA POWER daily weather retrieval and cached weekly climatology."""
 
+import hashlib
 import logging
 import math
 import os
@@ -13,6 +14,12 @@ import requests
 
 from app.analysis.core import clean_daily, normals_arrays, to_weekly, weekly_normals
 from app.config import settings
+from app.services.earth_engine_service import (
+    EarthObservationDataUnavailable,
+    fetch_imerg_weekly,
+    fetch_modis_ndvi,
+    modis_samples_to_daily,
+)
 
 POWER_DAILY_URL = "https://power.larc.nasa.gov/api/temporal/daily/point"
 CELL_ID_PATTERN = re.compile(r"^(\d{2}\.\d)([NS])_(\d{3}\.\d)([EW])$")
@@ -63,10 +70,26 @@ def cell_coordinates(cell_id: str) -> tuple[float, float]:
 
 def get_cell_path(cell_id: str, kind: str = "normals") -> str:
     cell_coordinates(cell_id)
-    if not re.fullmatch(r"[a-z_]+", kind):
+    if not re.fullmatch(r"[a-z0-9_]+", kind):
         raise ValueError("Invalid climate cache kind")
     os.makedirs(settings.cache_dir, exist_ok=True)
     return os.path.join(settings.cache_dir, f"{cell_id}_{kind}.parquet")
+
+
+def get_point_cache_path(lat: float, lon: float, kind: str) -> str:
+    if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
+        raise ValueError("latitude or longitude is out of range")
+    if not re.fullmatch(r"[a-z0-9_]+", kind):
+        raise ValueError("Invalid point cache kind")
+    lat_step = 250 / 111_320
+    lon_step = lat_step / max(math.cos(math.radians(lat)), 1e-6)
+    snapped_lat = round(lat / lat_step) * lat_step
+    snapped_lon = round(lon / lon_step) * lon_step
+    point_key = hashlib.sha256(
+        f"{snapped_lat:.6f},{snapped_lon:.6f}".encode()
+    ).hexdigest()[:16]
+    os.makedirs(settings.cache_dir, exist_ok=True)
+    return os.path.join(settings.cache_dir, f"point_{point_key}_{kind}.parquet")
 
 
 def _read_parquet(path: str) -> pd.DataFrame:
@@ -130,7 +153,9 @@ def fetch_power_daily(
     for api_name, column_name in POWER_PARAMETERS.items():
         records = parameter_data.get(api_name)
         if not isinstance(records, dict):
-            raise TypeError(f"NASA POWER response is missing {api_name}")
+            raise RuntimeError(  # noqa: TRY004
+                f"NASA POWER response is missing {api_name}"
+            )
         values = pd.Series(records, dtype=float)
         values.index = pd.to_datetime(values.index, format="%Y%m%d", errors="raise")
         columns[column_name] = values
@@ -178,16 +203,103 @@ def load_cell_weekly(
     cell_id: str,
     refresh: bool = False,
     years: int = 20,
+    point: tuple[float, float] | None = None,
 ) -> pd.DataFrame:
     """Load ISO weekly weather from cache, deriving it from daily data if needed."""
     path = get_cell_path(cell_id, "weekly")
     if os.path.exists(path) and not refresh:
         cached = pd.read_parquet(path)
-        if isinstance(cached.index, pd.MultiIndex) and cached.index.names == ["year", "week"]:
+        if (
+            isinstance(cached.index, pd.MultiIndex)
+            and cached.index.names == ["year", "week"]
+        ):
+            weekly = cached.sort_index()
+        else:
+            weekly = to_weekly(load_cell_daily(cell_id, refresh=refresh, years=years))
+            _write_parquet_atomic(weekly, path)
+    else:
+        weekly = to_weekly(load_cell_daily(cell_id, refresh=refresh, years=years))
+        _write_parquet_atomic(weekly, path)
+
+    data_gaps = list(weekly.attrs.get("data_gaps", []))
+    if point is not None:
+        try:
+            ndvi = load_point_ndvi_weekly(*point, refresh=refresh, years=years)
+        except EarthObservationDataUnavailable as exc:
+            logger.warning(
+                "MODIS NDVI is unavailable for point %s,%s",
+                point[0],
+                point[1],
+                exc_info=exc,
+            )
+            data_gaps.append("MODIS NDVI is unavailable; NDVI series omitted")
+        else:
+            weekly = weekly.join(ndvi[["ndvi"]], how="outer").sort_index()
+    weekly.attrs["data_gaps"] = data_gaps
+    return weekly
+
+
+def load_point_ndvi_weekly(
+    lat: float,
+    lon: float,
+    refresh: bool = False,
+    years: int = 20,
+) -> pd.DataFrame:
+    if years < 1:
+        raise ValueError("years must be positive")
+    path = get_point_cache_path(lat, lon, "ndvi")
+    if os.path.exists(path) and not refresh:
+        cached = pd.read_parquet(path)
+        if (
+            isinstance(cached.index, pd.MultiIndex)
+            and cached.index.names == ["year", "week"]
+        ):
             return cached.sort_index()
 
-    weekly = to_weekly(load_cell_daily(cell_id, refresh=refresh, years=years))
+    end_date = date.today()
+    try:
+        start_date = end_date.replace(year=end_date.year - years)
+    except ValueError:
+        start_date = end_date.replace(year=end_date.year - years, day=28)
+    samples = fetch_modis_ndvi(lat, lon, start_date, end_date)
+    if not samples:
+        raise EarthObservationDataUnavailable("MODIS returned no composites for this point")
+
+    daily_samples = modis_samples_to_daily(samples, start_date, end_date)
+    daily = pd.DataFrame.from_dict(
+        daily_samples,
+        orient="index",
+        columns=["ndvi"],
+    )
+    daily.index = pd.to_datetime(daily.index)
+    weekly = to_weekly(daily, sum_cols=(), mean_cols=("ndvi",))
+    if weekly.empty or not weekly["ndvi"].notna().any():
+        raise EarthObservationDataUnavailable("MODIS returned no usable NDVI observations")
     _write_parquet_atomic(weekly, path)
+    return weekly
+
+
+def load_point_imerg_weekly(
+    lat: float,
+    lon: float,
+    year: int,
+    refresh: bool = False,
+) -> dict[int, float | None]:
+    path = get_point_cache_path(lat, lon, f"imerg_{year}")
+    if os.path.exists(path) and not refresh:
+        cached = pd.read_parquet(path)
+        if "rain_mm" in cached and len(cached) == 52:
+            return {
+                int(week): (
+                    float(value) if pd.notna(value) else None
+                )
+                for week, value in cached["rain_mm"].items()
+            }
+
+    weekly = fetch_imerg_weekly(lat, lon, year)
+    frame = pd.DataFrame.from_dict(weekly, orient="index", columns=["rain_mm"])
+    frame.index.name = "week"
+    _write_parquet_atomic(frame, path)
     return weekly
 
 
@@ -205,13 +317,22 @@ def load_cell_normals(
     cell_id: str,
     refresh: bool = False,
     years: int = 20,
+    point: tuple[float, float] | None = None,
 ) -> dict[str, list[float]]:
     """Load cached normals or compute them from the cell's NASA POWER daily series."""
     path = get_cell_path(cell_id, "normals")
-    if os.path.exists(path) and not refresh:
+    if point is None and os.path.exists(path) and not refresh:
         return _read_cached_normals(path)
 
-    weekly = load_cell_weekly(cell_id, refresh=refresh, years=years)
+    if point is None:
+        weekly = load_cell_weekly(cell_id, refresh=refresh, years=years)
+    else:
+        weekly = load_cell_weekly(
+            cell_id,
+            refresh=refresh,
+            years=years,
+            point=point,
+        )
     columns = [
         column
         for column in ("rain_mm", "tmean", "tmax", "ndvi")
@@ -224,16 +345,24 @@ def load_cell_normals(
     values = normals_arrays(normals, columns)
     if "rain_mm" in values:
         values["rain"] = values["rain_mm"]
-    frame = pd.DataFrame({key: value for key, value in values.items() if key != "rain"})
-    frame.index = pd.RangeIndex(1, 53, name="week")
-    _write_parquet_atomic(frame, path)
+    if point is None:
+        frame = pd.DataFrame({key: value for key, value in values.items() if key != "rain"})
+        frame.index = pd.RangeIndex(1, 53, name="week")
+        _write_parquet_atomic(frame, path)
     return values
 
 
-def load_cell_timeline(cell_id: str) -> dict:
+def load_cell_timeline(
+    cell_id: str,
+    point: tuple[float, float] | None = None,
+) -> dict:
     """Return 52-week normals and the latest complete available observed year."""
     try:
-        normals = load_cell_normals(cell_id)
+        normals = (
+            load_cell_normals(cell_id)
+            if point is None
+            else load_cell_normals(cell_id, point=point)
+        )
     except Exception as exc:
         logger.exception("Could not load climate normals for cell %s", cell_id)
         raise ClimateDataUnavailable(
@@ -241,7 +370,11 @@ def load_cell_timeline(cell_id: str) -> dict:
         ) from exc
 
     try:
-        weekly = load_cell_weekly(cell_id)
+        weekly = (
+            load_cell_weekly(cell_id)
+            if point is None
+            else load_cell_weekly(cell_id, point=point)
+        )
     except (OSError, RuntimeError, requests.RequestException) as exc:
         logger.warning(
             "Weekly observations unavailable for climate cell %s; serving cached normals",
@@ -251,12 +384,21 @@ def load_cell_timeline(cell_id: str) -> dict:
         return {
             "normals": normals,
             "observations": {},
+            "observation_sources": {},
+            "source_gaps": [],
             "year": None,
         }
 
     if weekly.empty:
-        return {"normals": normals, "observations": {}, "year": None}
+        return {
+            "normals": normals,
+            "observations": {},
+            "observation_sources": {},
+            "source_gaps": [],
+            "year": None,
+        }
 
+    source_gaps = list(weekly.attrs.get("data_gaps", []))
     available_years = sorted(
         int(year) for year in weekly.index.get_level_values("year").unique()
     )
@@ -264,14 +406,21 @@ def load_cell_timeline(cell_id: str) -> dict:
         year
         for year in available_years
         if set(range(1, 53)).issubset(
-            set(
+            {
                 int(week)
                 for week in weekly.xs(year, level="year").index.tolist()
-            )
+            }
         )
     ]
     year = complete_years[-1] if complete_years else available_years[-1]
     year_frame = weekly.xs(year, level="year").reindex(range(1, 53))
+    observation_sources = {
+        column: "NASA POWER"
+        for column in ("rain_mm", "tmean", "tmax")
+        if column in year_frame
+    }
+    if "ndvi" in year_frame:
+        observation_sources["ndvi"] = "MODIS MOD13Q1"
     observations: dict[str, list[float | None]] = {}
     for column in ("rain_mm", "tmean", "tmax", "ndvi"):
         if column not in year_frame:
@@ -283,8 +432,41 @@ def load_cell_timeline(cell_id: str) -> dict:
             for value in year_frame[column].tolist()
         ]
 
+    if point is not None:
+        try:
+            imerg = load_point_imerg_weekly(point[0], point[1], year)
+        except EarthObservationDataUnavailable as exc:
+            logger.warning(
+                "GPM IMERG is unavailable for point %s,%s in %s",
+                point[0],
+                point[1],
+                year,
+                exc_info=exc,
+            )
+            source_gaps.append(
+                "GPM IMERG is unavailable; NASA POWER rainfall observations are used"
+            )
+        else:
+            if sum(value is not None for value in imerg.values()) >= 50:
+                power_rain = observations.get("rain_mm", [None] * 52)
+                observations["rain_mm"] = [
+                    imerg.get(week)
+                    if imerg.get(week) is not None
+                    else power_rain[week - 1]
+                    for week in range(1, 53)
+                ]
+                observation_sources["rain_mm"] = (
+                    "NASA GPM IMERG (provisional status possible) with NASA POWER gap fallback"
+                )
+            else:
+                source_gaps.append(
+                    "GPM IMERG coverage is incomplete; NASA POWER rainfall observations are used"
+                )
+
     return {
         "normals": normals,
         "observations": observations,
+        "observation_sources": observation_sources,
+        "source_gaps": source_gaps,
         "year": year,
     }

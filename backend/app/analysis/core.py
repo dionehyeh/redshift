@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 MIN_YEARS = 10
-STD_FLOOR = {"rain_mm": 5.0, "t2m": 0.3, "tmax": 0.3, "ndvi": 0.03}
+STD_FLOOR = {"rain_mm": 5.0, "t2m": 0.3, "tmean": 0.3, "tmax": 0.3, "ndvi": 0.03}
 STAGE_WEIGHT = {
     "establishment": 1.2,
     "vegetative": 1.0,
@@ -16,10 +16,14 @@ STAGE_WEIGHT = {
 
 # ---------- 19.4 Data Cleaning ----------
 def clean_daily(df: pd.DataFrame) -> pd.DataFrame:
-    """Clean daily observations: convert -999/-9999 missing flags to NaN and clip negative rain."""
+    """Clean provider missing flags, scale raw MODIS NDVI, and clip negative rain."""
     df = df.replace(-999, np.nan).replace(-9999, np.nan)
     if "rain_mm" in df:
         df["rain_mm"] = df["rain_mm"].clip(lower=0)
+    if "ndvi" in df:
+        df["ndvi"] = df["ndvi"].replace(-3000, np.nan)
+        if df["ndvi"].abs().max(skipna=True) > 1:
+            df["ndvi"] = df["ndvi"] * 0.0001
     return df.sort_index()
 
 # ---------- 19.5 Weekly Aggregation ----------
@@ -88,10 +92,12 @@ def anomalies(wk_year: pd.DataFrame, g: pd.DataFrame, col: str) -> pd.DataFrame:
     mean = g[(col, "mean")].reindex(w).values
     std = np.maximum(g[(col, "std")].reindex(w).values, STD_FLOOR.get(col, 0.1))
     val = wk_year[col].values
+    with np.errstate(divide="ignore", invalid="ignore"):
+        pct = (val / np.where(mean == 0, np.nan, mean) - 1) * 100
     return pd.DataFrame(
         {
             "z": (val - mean) / std,
-            "pct": (val / np.where(mean == 0, np.nan, mean) - 1) * 100,
+            "pct": pct,
             "value": val,
             "normal": mean,
         },
@@ -128,8 +134,12 @@ def bare_runs(ndvi: np.ndarray | list[float], thr: float = 0.25, min_weeks: int 
 
 # ---------- 19.10 Crop Stage Calendar ----------
 def stage_calendar(duration_days: int, flower_frac: tuple[float, float]) -> list[tuple[str, float, float]]:
+    if duration_days <= 0:
+        raise ValueError("duration_days must be positive")
     n = duration_days / 7.0
     a, b = flower_frac
+    if not (0 <= a < b <= 1):
+        raise ValueError("flower_frac must satisfy 0 <= start < end <= 1")
     return [
         ("establishment", 0, 0.2 * n),
         ("vegetative", 0.2 * n, a * n),
@@ -150,8 +160,8 @@ def build_findings(
     rain_z: list[float],
     rain_pct: list[float],
     tmax: list[float],
-    ndvi: list[float],
-    ndvi_z: list[float],
+    ndvi: list[float | None] | None,
+    ndvi_z: list[float | None] | None,
     crop: dict,
     source_meta: dict,
     ndvi_data_available: bool = True,
@@ -162,9 +172,13 @@ def build_findings(
         "rain_z": np.asarray(rain_z, dtype=float),
         "rain_pct": np.asarray(rain_pct, dtype=float),
         "tmax": np.asarray(tmax, dtype=float),
-        "ndvi": np.asarray(ndvi, dtype=float),
-        "ndvi_z": np.asarray(ndvi_z, dtype=float),
     }
+    if (ndvi is None) != (ndvi_z is None):
+        raise ValueError("NDVI values and anomalies must either both be provided or omitted")
+    ndvi_available = ndvi is not None
+    if ndvi_available:
+        arrays["ndvi"] = np.asarray(ndvi, dtype=float)
+        arrays["ndvi_z"] = np.asarray(ndvi_z, dtype=float)
     lengths = {len(values) for values in arrays.values()}
     if len(lengths) != 1 or (season_weeks and len(season_weeks) != len(rain_z)):
         raise ValueError("season data arrays and week labels must have matching lengths")
@@ -201,7 +215,15 @@ def build_findings(
                 "unit": "%",
             },
         )
-    safe_tmax = np.where(np.isfinite(arrays["tmax"]), arrays["tmax"], -np.inf)
+    flowering = next(stage for stage in cal if stage[0] == "flowering")
+    safe_tmax = np.where(
+        np.isfinite(arrays["tmax"])
+        & np.asarray(
+            [flowering[1] <= i < flowering[2] for i in range(len(arrays["tmax"]))]
+        ),
+        arrays["tmax"],
+        -np.inf,
+    )
     for r in heat_runs(safe_tmax, crop["t_flower_max"]):
         sub_t = arrays["tmax"][r[0] : r[1] + 1]
         diff = float(np.mean(sub_t) - crop["t_flower_max"])
@@ -210,27 +232,17 @@ def build_findings(
             r,
             "finding.heat",
             diff,
-            {
-                "deviation": f"+{diff:.1f} C above limit",
-                "deviation_value": diff,
-                "unit": "C",
-            },
+            {"deviation": f"+{diff:.1f} C above limit"},
         )
-
-    if ndvi_data_available:
+    if ndvi_available:
         safe_ndvi_z = np.where(np.isfinite(arrays["ndvi_z"]), arrays["ndvi_z"], np.inf)
         for r in ndvi_dip_runs(safe_ndvi_z):
-            ndvi_deviation = float(abs(np.nanmean(arrays["ndvi_z"][r[0] : r[1] + 1])))
             add(
                 "ndvi_dip",
                 r,
                 "finding.ndvi_dip",
-                ndvi_deviation,
-                {
-                    "deviation": "greenness below normal",
-                    "deviation_value": ndvi_deviation,
-                    "unit": "z",
-                },
+                float(abs(np.nanmean(arrays["ndvi_z"][r[0] : r[1] + 1]))),
+                {"deviation": "greenness below normal"},
             )
 
         for r in cloud_gap_runs(arrays["ndvi"]):
@@ -239,35 +251,22 @@ def build_findings(
                 r,
                 "finding.cloud_gap",
                 0.0,
-                {
-                    "deviation": "no clear NDVI observation",
-                    "deviation_value": 0.0,
-                    "unit": "NDVI",
-                    "data_gap": True,
-                },
+                {"deviation": "no clear NDVI observation", "data_gap": True},
             )
         for r in bare_runs(arrays["ndvi"]):
-            ndvi_deviation = float(
-                max(0.0, 0.25 - np.nanmean(arrays["ndvi"][r[0] : r[1] + 1]))
-            )
             add(
                 "bare_field",
                 r,
                 "finding.bare_field",
-                ndvi_deviation,
-                {
-                    "deviation": "low vegetation cover",
-                    "deviation_value": ndvi_deviation,
-                    "unit": "NDVI",
-                    "data_gap": False,
-                },
+                float(max(0.0, 0.25 - np.nanmean(arrays["ndvi"][r[0] : r[1] + 1]))),
+                {"deviation": "low vegetation cover", "data_gap": False},
             )
 
     findings.sort(key=lambda f: -f["severity"])
     gaps = [
         f"No clear image in weeks {week_label(a)} to {week_label(b)} (cloud cover)"
         for a, b in cloud_gap_runs(arrays["ndvi"])
-    ] if ndvi_data_available else ["NDVI observations are unavailable for this period"]
+    ] if ndvi_available else ["NDVI observations are unavailable for this season"]
     return findings, gaps
 
 # ---------- 19.12 Likely-Cause Synthesis ----------
@@ -280,13 +279,13 @@ CAUSE_MAP = {
 def likely_causes(findings: list[dict], farmer_cause: str | None = None) -> dict:
     suspected = [
         {
-            "cause": CAUSE_MAP.get(f["kind"], "unspecified_stress"),
+            "cause": CAUSE_MAP[f["kind"]],
             "from_finding": f["kind"],
             "weeks": f["weeks"],
             "stage": f["crop_stage"],
         }
         for f in findings
-        if f["kind"] in CAUSE_MAP
+        if f.get("kind") in CAUSE_MAP
     ]
     suspected = suspected[:3]
     return {
@@ -303,8 +302,18 @@ def water_outlook(
     imd_factor_range: tuple[float, float] | None = None,
     season_to_date_pct: float | None = None,
 ) -> dict:
-    if len(normal_rain) != 52 or not 1 <= start_week <= 52 or n_weeks < 0:
-        raise ValueError("outlook requires 52 weekly normals and a valid week range")
+    if len(normal_rain) != 52:
+        raise ValueError("normal_rain must contain exactly 52 weekly values")
+    if not 1 <= start_week <= 52 or n_weeks <= 0:
+        raise ValueError("start_week must be 1-52 and n_weeks must be positive")
+    if not np.isfinite(normal_rain).all() or any(value < 0 for value in normal_rain):
+        raise ValueError("normal_rain values must be finite and non-negative")
+    if imd_factor_range is not None:
+        lo, hi = imd_factor_range
+        if not np.isfinite([lo, hi]).all() or lo < 0 or hi < lo:
+            raise ValueError("imd_factor_range must contain ordered non-negative values")
+    if season_to_date_pct is not None and not np.isfinite(season_to_date_pct):
+        raise ValueError("season_to_date_pct must be finite")
     idx = [(start_week - 1 + i) % 52 for i in range(n_weeks)]
     selected_rain = np.asarray([normal_rain[i] for i in idx], dtype=float)
     if not np.isfinite(selected_rain).all():
@@ -381,7 +390,9 @@ def stored_soil_water(
     normalized_answer = answer.lower() if isinstance(answer, str) else None
     if normalized_answer in ANSWER_FRACTION:
         return round(cap_mm * ANSWER_FRACTION[normalized_answer], 1), "high", "farmer answer"
-    if sm_vol is not None and not np.isnan(sm_vol):
+    if sm_vol is not None and not np.isfinite(sm_vol):
+        raise ValueError("sm_vol must be finite when provided")
+    if sm_vol is not None:
         f = min(1.0, max(0.0, (sm_vol - wilting) / (field_cap - wilting)))
         return round(cap_mm * f, 1), "medium", "satellite normal soil moisture"
     return round(cap_mm * 0.3, 1), "low", "default estimate (30% capacity)"

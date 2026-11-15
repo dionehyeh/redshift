@@ -11,7 +11,6 @@ from app.errors import register_error_handlers
 from app.routers import fields as fields_router
 from app.services import climate_service
 
-
 USER = {
     "id": 7,
     "role": "farmer",
@@ -130,7 +129,7 @@ def field_client(monkeypatch):
     monkeypatch.setattr(
         fields_router,
         "load_cell_timeline",
-        lambda _cell_id: {
+        lambda _cell_id, point=None: {
             "normals": {
                 "rain": [10, 20],
                 "tmean": [25] * 53,
@@ -234,7 +233,7 @@ def test_timeline_prefers_historical_observations_and_retains_normals(
     monkeypatch.setattr(
         fields_router,
         "load_cell_timeline",
-        lambda _cell_id: {
+        lambda _cell_id, point=None: {
             "normals": {"rain_mm": [12.0] * 52, "tmean": [25.0] * 52},
             "observations": {
                 "rain_mm": [18.0] * 52,

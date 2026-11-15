@@ -4,15 +4,14 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import type { UserProfile } from "@/lib/types";
-import { Loader2 } from "lucide-react";
+import { Loader2, Sprout } from "lucide-react";
 
 export default function AuthRedirectPage() {
   const router = useRouter();
-  const [statusText, setStatusText] = useState("Loading your account...");
+  const [statusText, setStatusText] = useState("Loading your account…");
 
   useEffect(() => {
     let active = true;
-
     async function redirectUser() {
       try {
         const user = await api<UserProfile>("/me");
@@ -24,25 +23,24 @@ export default function AuthRedirectPage() {
           );
         }
       } catch {
-        // If backend /me is not reachable, gracefully fallback to the primary /fields view
         if (active) {
-          setStatusText("Redirecting to plots dashboard...");
+          setStatusText("Redirecting to dashboard…");
           router.replace("/fields");
         }
       }
     }
-
     void redirectUser();
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [router]);
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-100 p-4">
-      <div className="rounded-2xl bg-white p-8 text-center shadow-sm max-w-sm w-full space-y-3">
-        <Loader2 className="w-6 h-6 animate-spin text-emerald-700 mx-auto" />
-        <p className="text-sm font-medium text-slate-700">{statusText}</p>
+    <main className="flex min-h-screen items-center justify-center p-4 bg-gradient-to-br from-green-950 via-stone-900 to-stone-800">
+      <div className="bg-white rounded-3xl p-10 text-center max-w-xs w-full shadow-2xl space-y-5">
+        <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-emerald-500 to-green-700 flex items-center justify-center shadow-lg">
+          <Sprout className="w-8 h-8 text-white" />
+        </div>
+        <Loader2 className="w-7 h-7 animate-spin text-emerald-600 mx-auto" />
+        <p className="text-sm font-semibold text-stone-600">{statusText}</p>
       </div>
     </main>
   );

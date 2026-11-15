@@ -1,7 +1,8 @@
 import json
 import time
-from typing import Callable
+
 from app.db import get_db
+
 
 def create_job(job_id: str, kind: str, target_id: int | None = None, steps: list[str] | None = None) -> None:
     steps_list = steps or []

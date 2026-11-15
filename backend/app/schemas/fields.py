@@ -63,7 +63,9 @@ def _validate_boundary_geojson(value: str | None) -> str | None:
         return False
 
     if not isinstance(boundary, dict):
-        raise ValueError("boundary_geojson must be a GeoJSON object")
+        raise ValueError(  # noqa: TRY004
+            "boundary_geojson must be a GeoJSON object"
+        )
 
     boundary_type = boundary.get("type")
     if boundary_type == "Feature":
@@ -197,6 +199,7 @@ class FieldProfileResponse(BaseModel):
     water_quality: str
     profile_status: str
     profile: dict[str, MetricMetadata] = Field(default_factory=dict)
+    gaps: list[str] = Field(default_factory=list)
     climate_cell_id: str | None = None
     created_at: str
 
